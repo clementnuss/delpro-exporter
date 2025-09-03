@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/VictoriaMetrics/metrics"
 	_ "github.com/microsoft/go-mssqldb"
@@ -31,6 +32,15 @@ func NewDelProExporter(host, port, dbname, user, password string) *DelProExporte
 	}
 }
 
+func cleanLabelValue(value string) string {
+	// Replace problematic characters for Prometheus labels
+	value = strings.ReplaceAll(value, "\"", "")
+	value = strings.ReplaceAll(value, "\\", "")
+	value = strings.ReplaceAll(value, "\n", "")
+	value = strings.ReplaceAll(value, "\r", "")
+	return value
+}
+
 func (e *DelProExporter) UpdateMetrics() {
 	e.collectMilkingMetrics()
 	e.collectDeviceUtilization()
@@ -39,14 +49,18 @@ func (e *DelProExporter) UpdateMetrics() {
 func (e *DelProExporter) collectMilkingMetrics() {
 	query := `
 		SELECT 
-			CAST(BasicAnimal AS VARCHAR(10)) as animal_id,
-			CAST(MilkingDevice AS VARCHAR(10)) as device_id,
-			TotalYield,
-			AvgConductivity,
-			DATEDIFF(SECOND, BeginTime, EndTime) as duration_seconds
-		FROM SessionMilkYield 
-		WHERE BeginTime >= DATEADD(hour, -1, GETDATE())
-		AND TotalYield IS NOT NULL
+			CAST(ba.Number AS VARCHAR(10)) as animal_number,
+			COALESCE(ba.Name, 'Unknown') as animal_name,
+			COALESCE(ba.OfficialRegNo, 'Unknown') as animal_reg_no,
+			CAST(smy.MilkingDevice AS VARCHAR(10)) as device_id,
+			smy.TotalYield,
+			smy.AvgConductivity,
+			DATEDIFF(SECOND, smy.BeginTime, smy.EndTime) as duration_seconds
+		FROM SessionMilkYield smy
+		INNER JOIN BasicAnimal ba ON smy.BasicAnimal = ba.OID
+		WHERE smy.BeginTime >= DATEADD(day, -1, GETDATE())
+		AND smy.TotalYield IS NOT NULL
+		AND ba.Number IS NOT NULL
 	`
 
 	rows, err := e.db.Query(query)
@@ -56,28 +70,37 @@ func (e *DelProExporter) collectMilkingMetrics() {
 	}
 	defer rows.Close()
 
+	recordCount := 0
 	for rows.Next() {
-		var animalID, deviceID string
+		recordCount++
+		var animalNumber, animalName, animalRegNo, deviceID string
 		var yield float64
 		var conductivity *int
 		var duration *int
 
-		if err := rows.Scan(&animalID, &deviceID, &yield, &conductivity, &duration); err != nil {
+		if err := rows.Scan(&animalNumber, &animalName, &animalRegNo, &deviceID, &yield, &conductivity, &duration); err != nil {
 			log.Printf("Error scanning row: %v", err)
 			continue
 		}
 
-		metrics.GetOrCreateGauge(fmt.Sprintf(`delpro_milk_yield_liters{animal_id="%s",device_id="%s"}`, animalID, deviceID), nil).Set(yield)
-		metrics.GetOrCreateCounter(fmt.Sprintf(`delpro_milk_sessions_total{animal_id="%s",device_id="%s"}`, animalID, deviceID)).Inc()
+		// Clean label values for Prometheus (remove quotes and special characters)
+		animalName = cleanLabelValue(animalName)
+		animalRegNo = cleanLabelValue(animalRegNo)
+
+		labelStr := fmt.Sprintf(`animal_number="%s",animal_name="%s",animal_reg_no="%s",device_id="%s"`, animalNumber, animalName, animalRegNo, deviceID)
+		
+		metrics.GetOrCreateGauge(fmt.Sprintf(`delpro_milk_yield_liters{%s}`, labelStr), nil).Set(yield)
+		metrics.GetOrCreateCounter(fmt.Sprintf(`delpro_milk_sessions_total{%s}`, labelStr)).Inc()
 
 		if conductivity != nil {
-			metrics.GetOrCreateGauge(fmt.Sprintf(`delpro_milk_conductivity_avg{animal_id="%s",device_id="%s"}`, animalID, deviceID), nil).Set(float64(*conductivity))
+			metrics.GetOrCreateGauge(fmt.Sprintf(`delpro_milk_conductivity_avg{%s}`, labelStr), nil).Set(float64(*conductivity))
 		}
 
 		if duration != nil {
-			metrics.GetOrCreateGauge(fmt.Sprintf(`delpro_milking_duration_seconds{animal_id="%s",device_id="%s"}`, animalID, deviceID), nil).Set(float64(*duration))
+			metrics.GetOrCreateGauge(fmt.Sprintf(`delpro_milking_duration_seconds{%s}`, labelStr), nil).Set(float64(*duration))
 		}
 	}
+	log.Printf("Collected milking metrics for %d records", recordCount)
 }
 
 func (e *DelProExporter) collectDeviceUtilization() {
@@ -86,7 +109,7 @@ func (e *DelProExporter) collectDeviceUtilization() {
 			CAST(MilkingDevice AS VARCHAR(10)) as device_id,
 			COUNT(*) as session_count
 		FROM SessionMilkYield 
-		WHERE BeginTime >= DATEADD(hour, -1, GETDATE())
+		WHERE BeginTime >= DATEADD(day, -1, GETDATE())
 		AND TotalYield IS NOT NULL
 		GROUP BY MilkingDevice
 	`
