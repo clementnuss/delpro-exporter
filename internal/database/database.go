@@ -41,7 +41,7 @@ func (c *Client) Close() error {
 }
 
 // GetMilkingRecords retrieves milking records from the database for the specified duration
-func (c *Client) GetMilkingRecords(lookbackDuration time.Duration) ([]models.MilkingRecord, error) {
+func (c *Client) GetMilkingRecords(start, end time.Time) ([]models.MilkingRecord, error) {
 	query := `
 		SELECT 
 			CAST(ba.Number AS VARCHAR(10)) as animal_number,
@@ -57,12 +57,12 @@ func (c *Client) GetMilkingRecords(lookbackDuration time.Duration) ([]models.Mil
 		FROM SessionMilkYield smy
 		INNER JOIN BasicAnimal ba ON smy.BasicAnimal = ba.OID
 		LEFT JOIN TextLookupItem tli ON ba.Breed = tli.ItemID AND tli.Collection = 6
-		WHERE smy.EndTime >= DATEADD(second, @TimeQty, GETDATE())
+		WHERE smy.EndTime >= @StartTime AND smy.EndTime < @EndTime
 		AND smy.TotalYield IS NOT NULL
 		AND ba.Number IS NOT NULL
 	`
 
-	rows, err := c.db.Query(query, sql.Named("TimeQty", -lookbackDuration.Seconds()))
+	rows, err := c.db.Query(query, sql.Named("StartTime", start), sql.Named("EndTime", end))
 	if err != nil {
 		log.Printf("Error querying milking metrics: %v", err)
 		return nil, err
@@ -152,3 +152,4 @@ func translateBreedToFrench(englishBreed string) string {
 	}
 	return englishBreed
 }
+

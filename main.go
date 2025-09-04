@@ -43,7 +43,7 @@ func main() {
 
 	http.HandleFunc("/historical-metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		delproExporter.WriteHistoricalMetrics(w)
+		delproExporter.WriteHistoricalMetrics(r, w)
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

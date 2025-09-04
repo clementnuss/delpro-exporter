@@ -63,3 +63,4 @@ func marshalGauge(w io.Writer, prefix string, g *metrics.Gauge, t time.Time) {
 		fmt.Fprintf(w, "%s %g %d\n", prefix, v, timestampMs)
 	}
 }
+

@@ -14,8 +14,8 @@ const (
 	MetricDeviceUtilization = "delpro_device_utilization_sessions_per_hour"
 
 	// Query parameters
-	DefaultLookbackHours    = 24
-	HistoricalLookbackHours = 365 * 24
+	DefaultLookbackWindow   = 24 * time.Hour
+	HistoricalLookbackHours = 365 * 24 * time.Hour
 )
 
 // MilkingRecord represents a single milking session from the database
@@ -42,3 +42,4 @@ func (r *MilkingRecord) LabelStr() string {
 func (r *MilkingRecord) MetricName(metric string) string {
 	return fmt.Sprintf("%s{%s}", metric, r.LabelStr())
 }
+
