@@ -1,8 +1,10 @@
 package metrics
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/VictoriaMetrics/metrics"
@@ -11,6 +13,69 @@ import (
 
 // Exporter handles metrics creation and exposition
 type Exporter struct{}
+
+// TimestampWriter wraps an io.Writer and adds timestamps to each metric line
+type TimestampWriter struct {
+	writer    io.Writer
+	timestamp time.Time
+	buffer    bytes.Buffer
+}
+
+// NewTimestampWriter creates a new timestamp writer
+func NewTimestampWriter(w io.Writer, t time.Time) *TimestampWriter {
+	return &TimestampWriter{
+		writer:    w,
+		timestamp: t,
+	}
+}
+
+// Write intercepts writes and adds timestamps to each metric line
+func (tw *TimestampWriter) Write(p []byte) (n int, err error) {
+	// Accumulate data in buffer
+	tw.buffer.Write(p)
+
+	// Process complete lines
+	data := tw.buffer.String()
+	lines := strings.Split(data, "\n")
+
+	// Keep the last (potentially incomplete) line in buffer
+	if len(lines) > 0 && lines[len(lines)-1] != "" {
+		tw.buffer.Reset()
+		tw.buffer.WriteString(lines[len(lines)-1])
+		lines = lines[:len(lines)-1]
+	} else {
+		tw.buffer.Reset()
+	}
+
+	// Write complete lines with timestamps
+	timestampMs := tw.timestamp.UnixMilli()
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			_, err = fmt.Fprintf(tw.writer, "%s %d\n", line, timestampMs)
+			if err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	return len(p), nil
+}
+
+// Flush writes any remaining buffered data
+func (tw *TimestampWriter) Flush() error {
+	if tw.buffer.Len() > 0 {
+		line := strings.TrimSpace(tw.buffer.String())
+		if line != "" {
+			timestampMs := tw.timestamp.UnixMilli()
+			_, err := fmt.Fprintf(tw.writer, "%s %d\n", line, timestampMs)
+			if err != nil {
+				return err
+			}
+		}
+		tw.buffer.Reset()
+	}
+	return nil
+}
 
 // NewExporter creates a new metrics exporter instance
 func NewExporter() *Exporter {
@@ -24,31 +89,13 @@ func (e *Exporter) CreateMetricsFromRecords(s *metrics.Set, w io.Writer, records
 	}
 
 	for _, r := range records {
-		yieldGauge := s.GetOrCreateGauge(r.MetricName(models.MetricMilkYield), nil)
-		sessionCounter := s.GetOrCreateCounter(r.MetricName(models.MetricMilkSessions))
-
-		yieldGauge.Set(r.Yield)
-		sessionCounter.Inc()
+		s.GetOrCreateGauge(r.MetricName(models.MetricMilkYield), nil).Set(r.Yield)
+		s.GetOrCreateCounter(r.MetricName(models.MetricMilkSessions)).Inc()
+		s.GetOrCreateGauge(r.MetricName(models.MetricConductivity), nil).Set(float64(*r.Conductivity))
+		s.GetOrCreateHistogram(r.MetricName(models.MetricMilkingDuration)).Update(float64(*r.Duration))
 
 		if w != nil {
-			marshalGauge(w, r.MetricName(models.MetricMilkYield), yieldGauge, r.EndTime)
-			marshalCounter(w, r.MetricName(models.MetricMilkSessions), sessionCounter, r.EndTime)
-		}
-
-		// Optional metrics
-		if r.Conductivity != nil {
-			conductivityGauge := s.GetOrCreateGauge(r.MetricName(models.MetricConductivity), nil)
-			conductivityGauge.Set(float64(*r.Conductivity))
-			if w != nil {
-				marshalGauge(w, r.MetricName(models.MetricConductivity), conductivityGauge, r.EndTime)
-			}
-		}
-		if r.Duration != nil {
-			durationGauge := s.GetOrCreateGauge(r.MetricName(models.MetricMilkingDuration), nil)
-			durationGauge.Set(float64(*r.Duration))
-			if w != nil {
-				marshalGauge(w, r.MetricName(models.MetricMilkingDuration), durationGauge, r.EndTime)
-			}
+			s.WritePrometheus(NewTimestampWriter(w, r.EndTime))
 		}
 	}
 }
@@ -64,24 +111,4 @@ func (e *Exporter) CreateDeviceUtilizationMetrics(utilization map[string]int) {
 func (e *Exporter) WriteHistoricalMetrics(w io.Writer, records []models.MilkingRecord) {
 	s := metrics.NewSet()
 	e.CreateMetricsFromRecords(s, w, records)
-}
-
-// marshalGauge writes a gauge metric with timestamp in Prometheus format
-func marshalGauge(w io.Writer, prefix string, g *metrics.Gauge, t time.Time) {
-	v := g.Get()
-	timestampMs := t.UnixMilli()
-
-	if float64(int64(v)) == v {
-		// Use integer format for whole numbers to avoid scientific notation
-		fmt.Fprintf(w, "%s %d %d\n", prefix, int64(v), timestampMs)
-	} else {
-		fmt.Fprintf(w, "%s %g %d\n", prefix, v, timestampMs)
-	}
-}
-
-// marshalCounter writes a counter metric with timestamp in Prometheus format
-func marshalCounter(w io.Writer, prefix string, c *metrics.Counter, t time.Time) {
-	v := c.Get()
-	timestampMs := t.UnixMilli()
-	fmt.Fprintf(w, "%s %d %d\n", prefix, v, timestampMs)
 }
