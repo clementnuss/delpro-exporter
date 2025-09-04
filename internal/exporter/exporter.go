@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/VictoriaMetrics/metrics"
@@ -66,6 +67,19 @@ func (e *DelProExporter) WriteHistoricalMetrics(r *http.Request, w http.Response
 		log.Printf("Unable to collect historical milking metrics: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
+	}
+
+	// Find highest OID processed
+	var highestOID int64
+	for _, record := range records {
+		if record.OID > highestOID {
+			highestOID = record.OID
+		}
+	}
+
+	// Set HTTP header with highest Object Identifier processed
+	if highestOID > 0 {
+		w.Header().Set("X-Highest-OID", strconv.FormatInt(highestOID, 10))
 	}
 
 	e.metrics.WriteHistoricalMetrics(w, records)

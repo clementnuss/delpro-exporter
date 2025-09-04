@@ -44,6 +44,7 @@ func (c *Client) Close() error {
 func (c *Client) GetMilkingRecords(start, end time.Time) ([]models.MilkingRecord, error) {
 	query := `
 		SELECT 
+			smy.OID,
 			CAST(ba.Number AS VARCHAR(10)) as animal_number,
 			COALESCE(ba.Name, 'Unknown') as animal_name,
 			COALESCE(ba.OfficialRegNo, 'Unknown') as animal_reg_no,
@@ -60,6 +61,7 @@ func (c *Client) GetMilkingRecords(start, end time.Time) ([]models.MilkingRecord
 		WHERE smy.EndTime >= @StartTime AND smy.EndTime < @EndTime
 		AND smy.TotalYield IS NOT NULL
 		AND ba.Number IS NOT NULL
+		ORDER BY smy.OID
 	`
 
 	rows, err := c.db.Query(query, sql.Named("StartTime", start), sql.Named("EndTime", end))
@@ -73,7 +75,7 @@ func (c *Client) GetMilkingRecords(start, end time.Time) ([]models.MilkingRecord
 	for rows.Next() {
 		var record models.MilkingRecord
 
-		if err := rows.Scan(&record.AnimalNumber, &record.AnimalName, &record.AnimalRegNo, &record.BreedName, &record.DeviceID, &record.Yield, &record.Conductivity, &record.Duration, &record.BeginTime, &record.EndTime); err != nil {
+		if err := rows.Scan(&record.OID, &record.AnimalNumber, &record.AnimalName, &record.AnimalRegNo, &record.BreedName, &record.DeviceID, &record.Yield, &record.Conductivity, &record.Duration, &record.BeginTime, &record.EndTime); err != nil {
 			log.Printf("Error scanning row: %v", err)
 			continue
 		}

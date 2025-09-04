@@ -20,6 +20,7 @@ const (
 
 // MilkingRecord represents a single milking session from the database
 type MilkingRecord struct {
+	OID          int64     // Database OID for tracking processed records
 	AnimalNumber string    // Farm animal number
 	AnimalName   string    // Animal name
 	AnimalRegNo  string    // Official registration number
