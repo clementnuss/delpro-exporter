@@ -4,12 +4,19 @@ A Prometheus exporter for DeLaval DelPro farm management system milking data.
 
 ## Features
 
-Exports the following metrics:
+Exports the following metrics with comprehensive animal labeling:
 - `delpro_milk_yield_liters` - Total milk yield per session in liters
 - `delpro_milk_sessions_total` - Total number of milking sessions
 - `delpro_milk_conductivity_avg` - Average milk conductivity
 - `delpro_milking_duration_seconds` - Duration of milking session in seconds
 - `delpro_device_utilization_sessions_per_hour` - Device utilization in sessions per hour
+
+All metrics include detailed labels:
+- `animal_number` - Farm animal number
+- `animal_name` - Animal name
+- `animal_reg_no` - Official registration number
+- `breed` - Breed name in French (Holstein Frisonne, Montbéliarde, etc.)
+- `milk_device_id` - Milking device identifier
 
 ## Usage
 
