@@ -1,11 +1,13 @@
 package exporter
 
 import (
+	"compress/gzip"
 	"errors"
 	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/VictoriaMetrics/metrics"
@@ -83,7 +85,18 @@ func (e *DelProExporter) WriteHistoricalMetrics(r *http.Request, w http.Response
 		w.Header().Set("X-Highest-OID", strconv.FormatInt(highestOID, 10))
 	}
 
-	e.metrics.WriteHistoricalMetrics(w, records)
+	// Check if client accepts gzip compression
+	var writer io.Writer = w
+	acceptsGzip := strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
+
+	if acceptsGzip {
+		w.Header().Set("Content-Encoding", "gzip")
+		gzWriter := gzip.NewWriter(w)
+		defer gzWriter.Close()
+		writer = gzWriter
+	}
+
+	e.metrics.WriteHistoricalMetrics(writer, records)
 }
 
 // parseTimeRange parses start and end time from HTTP request query parameters
