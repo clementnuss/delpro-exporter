@@ -18,18 +18,37 @@ func NewExporter() *Exporter {
 }
 
 // CreateMetricsFromRecords creates VictoriaMetrics from milking records
-func (e *Exporter) CreateMetricsFromRecords(records []models.MilkingRecord) {
+func (e *Exporter) CreateMetricsFromRecords(s *metrics.Set, w io.Writer, records []models.MilkingRecord) {
+	if s == nil {
+		s = metrics.GetDefaultSet()
+	}
+
 	for _, r := range records {
-		// Core metrics
-		metrics.GetOrCreateGauge(r.MetricName(models.MetricMilkYield), nil).Set(r.Yield)
-		metrics.GetOrCreateCounter(r.MetricName(models.MetricMilkSessions)).Inc()
+		yieldGauge := s.GetOrCreateGauge(r.MetricName(models.MetricMilkYield), nil)
+		sessionCounter := s.GetOrCreateCounter(r.MetricName(models.MetricMilkSessions))
+
+		yieldGauge.Set(r.Yield)
+		sessionCounter.Inc()
+
+		if w != nil {
+			marshalGauge(w, r.MetricName(models.MetricMilkYield), yieldGauge, r.EndTime)
+			marshalCounter(w, r.MetricName(models.MetricMilkSessions), sessionCounter, r.EndTime)
+		}
 
 		// Optional metrics
 		if r.Conductivity != nil {
-			metrics.GetOrCreateGauge(r.MetricName(models.MetricConductivity), nil).Set(float64(*r.Conductivity))
+			conductivityGauge := s.GetOrCreateGauge(r.MetricName(models.MetricConductivity), nil)
+			conductivityGauge.Set(float64(*r.Conductivity))
+			if w != nil {
+				marshalGauge(w, r.MetricName(models.MetricConductivity), conductivityGauge, r.EndTime)
+			}
 		}
 		if r.Duration != nil {
-			metrics.GetOrCreateGauge(r.MetricName(models.MetricMilkingDuration), nil).Set(float64(*r.Duration))
+			durationGauge := s.GetOrCreateGauge(r.MetricName(models.MetricMilkingDuration), nil)
+			durationGauge.Set(float64(*r.Duration))
+			if w != nil {
+				marshalGauge(w, r.MetricName(models.MetricMilkingDuration), durationGauge, r.EndTime)
+			}
 		}
 	}
 }
@@ -44,11 +63,7 @@ func (e *Exporter) CreateDeviceUtilizationMetrics(utilization map[string]int) {
 // WriteHistoricalMetrics writes metrics with timestamps in Prometheus exposition format
 func (e *Exporter) WriteHistoricalMetrics(w io.Writer, records []models.MilkingRecord) {
 	s := metrics.NewSet()
-	for _, r := range records {
-		milkGauge := s.GetOrCreateGauge(r.MetricName(models.MetricMilkYield), nil)
-		milkGauge.Add(r.Yield)
-		marshalGauge(w, r.MetricName(models.MetricMilkYield), milkGauge, r.EndTime)
-	}
+	e.CreateMetricsFromRecords(s, w, records)
 }
 
 // marshalGauge writes a gauge metric with timestamp in Prometheus format
@@ -64,3 +79,9 @@ func marshalGauge(w io.Writer, prefix string, g *metrics.Gauge, t time.Time) {
 	}
 }
 
+// marshalCounter writes a counter metric with timestamp in Prometheus format
+func marshalCounter(w io.Writer, prefix string, c *metrics.Counter, t time.Time) {
+	v := c.Get()
+	timestampMs := t.UnixMilli()
+	fmt.Fprintf(w, "%s %d %d\n", prefix, v, timestampMs)
+}

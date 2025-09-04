@@ -42,7 +42,8 @@ func (e *DelProExporter) UpdateMetrics() {
 		return
 	}
 
-	e.metrics.CreateMetricsFromRecords(records)
+	// Use the default global metrics set with no writer for current metrics
+	e.metrics.CreateMetricsFromRecords(nil, nil, records)
 
 	utilization, err := e.db.GetDeviceUtilization()
 	if err != nil {
