@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/VictoriaMetrics/metrics"
+	"github.com/clementnuss/delpro-exporter/internal/exporter"
 	_ "github.com/joho/godotenv/autoload"
 )
 
@@ -27,22 +27,23 @@ func main() {
 		log.Fatal("SQL_PASSWORD environment variable is required")
 	}
 
-	exporter := NewDelProExporter(*dbHost, *dbPort, *dbName, *dbUser, dbPassword)
+	delproExporter := exporter.NewDelProExporter(*dbHost, *dbPort, *dbName, *dbUser, dbPassword)
+	defer delproExporter.Close()
 
 	go func() {
 		for {
-			exporter.UpdateMetrics()
+			delproExporter.UpdateMetrics()
 			time.Sleep(30 * time.Second)
 		}
 	}()
 
 	http.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
-		metrics.WritePrometheus(w, false)
+		delproExporter.WritePrometheus(w, false)
 	})
 
 	http.HandleFunc("/historical-metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		exporter.WriteHistoricalMetrics(w)
+		delproExporter.WriteHistoricalMetrics(w)
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

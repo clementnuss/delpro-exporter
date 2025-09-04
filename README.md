@@ -2,6 +2,22 @@
 
 A Prometheus exporter for DeLaval DelPro farm management system milking data.
 
+## Project Structure
+
+```
+├── main.go                     # HTTP server and application entry point
+├── internal/
+│   ├── models/                 # Data structures and constants
+│   │   └── models.go
+│   ├── database/               # Database access layer
+│   │   └── database.go
+│   ├── metrics/                # Metrics creation and export logic
+│   │   └── metrics.go
+│   └── exporter/               # Main service layer
+│       └── exporter.go
+└── README.md
+```
+
 ## Features
 
 Exports the following metrics with comprehensive animal labeling:
@@ -21,9 +37,15 @@ All metrics include detailed labels:
 ## Usage
 
 ```bash
-export SQL_PASSWORD="YourStrong@Passw0rd"
+export SQL_PASSWORD="DelPro123!"
 go run . --web.listen-address=:9090 --db.host=localhost
 ```
+
+## Endpoints
+
+- `http://localhost:9090/metrics` - Current metrics in Prometheus format (no timestamps)
+- `http://localhost:9090/historical-metrics` - Historical metrics with timestamps for VictoriaMetrics import
+- `http://localhost:9090/` - Web interface with links to both endpoints
 
 ## Configuration
 
@@ -34,6 +56,21 @@ go run . --web.listen-address=:9090 --db.host=localhost
 - `--db.user`: Database user (default: `sa`)
 - `SQL_PASSWORD`: Environment variable for database password (required)
 
-## Metrics Endpoint
+## Historical Data Import
 
-Visit `http://localhost:9090/metrics` for Prometheus-formatted metrics.
+To import historical data into VictoriaMetrics:
+
+```bash
+# Import historical metrics with timestamps
+curl -X POST 'http://your-victoriametrics:8428/api/v1/import/prometheus' \
+  --data-binary @<(curl -s http://localhost:9090/historical-metrics)
+```
+
+Or save to file for batch import:
+```bash
+curl -s http://localhost:9090/historical-metrics > historical_data.txt
+curl -X POST 'http://your-victoriametrics:8428/api/v1/import/prometheus' \
+  --data-binary @historical_data.txt
+```
+
+The historical endpoint provides metrics with millisecond timestamps matching the actual milking session times from the DelPro database.
