@@ -3,3 +3,4 @@ tmp
 *.bak
 delpro-exporter
 historical-data.txt*
+delpro_last_oid.txt

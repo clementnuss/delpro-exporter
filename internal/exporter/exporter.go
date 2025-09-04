@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -20,14 +21,22 @@ import (
 type DelProExporter struct {
 	db      *database.Client
 	metrics *delprometrics.Exporter
+	oidFile string
+	lastOID int64
 }
 
 // NewDelProExporter creates a new DelPro exporter instance
 func NewDelProExporter(host, port, dbname, user, password string) *DelProExporter {
-	return &DelProExporter{
+	exporter := &DelProExporter{
 		db:      database.NewClient(host, port, dbname, user, password),
 		metrics: delprometrics.NewExporter(),
+		oidFile: "delpro_last_oid.txt",
 	}
+
+	// Load last processed OID from file
+	exporter.loadLastOID()
+
+	return exporter
 }
 
 // Close closes the database connection
@@ -37,15 +46,31 @@ func (e *DelProExporter) Close() error {
 
 // UpdateMetrics collects and updates current metrics from the database
 func (e *DelProExporter) UpdateMetrics() {
+	// Get records since last processed OID to prevent duplicate counter increments
 	now := time.Now()
-	records, err := e.db.GetMilkingRecords(now.Add(-models.DefaultLookbackWindow), now)
+	records, err := e.db.GetMilkingRecords(now.Add(-models.DefaultLookbackWindow), now, e.lastOID)
 	if err != nil {
 		log.Printf("Error collecting milking metrics: %v", err)
 		return
 	}
 
-	// Use the default global metrics set with no writer for current metrics
+	// Update metrics only for new records
 	e.metrics.CreateMetricsFromRecords(nil, nil, records)
+
+	// Update last processed OID if we have new records
+	if len(records) > 0 {
+		var highestOID int64
+		for _, record := range records {
+			if record.OID > highestOID {
+				highestOID = record.OID
+			}
+		}
+		if highestOID > e.lastOID {
+			e.lastOID = highestOID
+			e.saveLastOID()
+			log.Printf("Updated last processed OID to: %d", e.lastOID)
+		}
+	}
 
 	utilization, err := e.db.GetDeviceUtilization()
 	if err != nil {
@@ -65,7 +90,7 @@ func (e *DelProExporter) WriteHistoricalMetrics(r *http.Request, w http.Response
 		return
 	}
 
-	records, err := e.db.GetMilkingRecords(startTime, endTime)
+	records, err := e.db.GetMilkingRecords(startTime, endTime, 0)
 	if err != nil {
 		log.Printf("Unable to collect historical milking metrics: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -140,6 +165,24 @@ func parseTimeRange(r *http.Request) (time.Time, time.Time, error) {
 	}
 
 	return startTime, endTime, nil
+}
+
+// loadLastOID loads the last processed OID from file
+func (e *DelProExporter) loadLastOID() {
+	if data, err := os.ReadFile(e.oidFile); err == nil {
+		if oid, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil {
+			e.lastOID = oid
+			log.Printf("Loaded last processed OID: %d", e.lastOID)
+		}
+	}
+}
+
+// saveLastOID saves the last processed OID to file
+func (e *DelProExporter) saveLastOID() {
+	data := strconv.FormatInt(e.lastOID, 10)
+	if err := os.WriteFile(e.oidFile, []byte(data), 0644); err != nil {
+		log.Printf("Failed to save last OID: %v", err)
+	}
 }
 
 // WritePrometheus writes current metrics in standard Prometheus format

@@ -41,7 +41,7 @@ func (c *Client) Close() error {
 }
 
 // GetMilkingRecords retrieves milking records from the database for the specified duration
-func (c *Client) GetMilkingRecords(start, end time.Time) ([]models.MilkingRecord, error) {
+func (c *Client) GetMilkingRecords(start, end time.Time, lastOID int64) ([]models.MilkingRecord, error) {
 	query := `
 		SELECT 
 			smy.OID,
@@ -59,12 +59,13 @@ func (c *Client) GetMilkingRecords(start, end time.Time) ([]models.MilkingRecord
 		INNER JOIN BasicAnimal ba ON smy.BasicAnimal = ba.OID
 		LEFT JOIN TextLookupItem tli ON ba.Breed = tli.ItemID AND tli.Collection = 6
 		WHERE smy.EndTime >= @StartTime AND smy.EndTime < @EndTime
+		AND smy.OID > @LastOID
 		AND smy.TotalYield IS NOT NULL
 		AND ba.Number IS NOT NULL
 		ORDER BY smy.OID
 	`
 
-	rows, err := c.db.Query(query, sql.Named("StartTime", start), sql.Named("EndTime", end))
+	rows, err := c.db.Query(query, sql.Named("StartTime", start), sql.Named("EndTime", end), sql.Named("LastOID", lastOID))
 	if err != nil {
 		log.Printf("Error querying milking metrics: %v", err)
 		return nil, err
@@ -94,6 +95,7 @@ func (c *Client) GetMilkingRecords(start, end time.Time) ([]models.MilkingRecord
 	log.Printf("Collected milking metrics for %d records", len(records))
 	return records, nil
 }
+
 
 // GetDeviceUtilization retrieves device utilization metrics
 func (c *Client) GetDeviceUtilization() (map[string]int, error) {
