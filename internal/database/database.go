@@ -27,8 +27,7 @@ func NewClient(host, port, dbname, user, password string) *Client {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
