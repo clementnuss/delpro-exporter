@@ -2,6 +2,7 @@ package exporter
 
 import (
 	"compress/gzip"
+	"context"
 	"errors"
 	"io"
 	"log"
@@ -46,9 +47,13 @@ func (e *DelProExporter) Close() error {
 
 // UpdateMetrics collects and updates current metrics from the database
 func (e *DelProExporter) UpdateMetrics() {
+	// Create context with timeout for database operations
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	// Get records since last processed OID to prevent duplicate counter increments
 	now := time.Now()
-	records, err := e.db.GetMilkingRecords(now.Add(-models.DefaultLookbackWindow), now, e.lastOID)
+	records, err := e.db.GetMilkingRecords(ctx, now.Add(-models.DefaultLookbackWindow), now, e.lastOID)
 	if err != nil {
 		log.Printf("Error collecting milking metrics: %v", err)
 		return
@@ -72,7 +77,7 @@ func (e *DelProExporter) UpdateMetrics() {
 		}
 	}
 
-	utilization, err := e.db.GetDeviceUtilization()
+	utilization, err := e.db.GetDeviceUtilization(ctx)
 	if err != nil {
 		log.Printf("Error collecting device utilization: %v", err)
 		return
@@ -83,6 +88,10 @@ func (e *DelProExporter) UpdateMetrics() {
 
 // WriteHistoricalMetrics writes metrics with timestamps in Prometheus exposition format
 func (e *DelProExporter) WriteHistoricalMetrics(r *http.Request, w http.ResponseWriter) {
+	// Use request context with additional timeout for database operations
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
 	// Parse query parameters for start and end dates
 	startTime, endTime, err := parseTimeRange(r)
 	if err != nil {
@@ -90,7 +99,7 @@ func (e *DelProExporter) WriteHistoricalMetrics(r *http.Request, w http.Response
 		return
 	}
 
-	records, err := e.db.GetMilkingRecords(startTime, endTime, 0)
+	records, err := e.db.GetMilkingRecords(ctx, startTime, endTime, 0)
 	if err != nil {
 		log.Printf("Unable to collect historical milking metrics: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

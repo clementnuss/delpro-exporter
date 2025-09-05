@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -26,7 +27,11 @@ func NewClient(host, port, dbname, user, password string) *Client {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	if err := db.Ping(); err != nil {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
 		log.Fatal("Failed to ping database:", err)
 	}
 
@@ -41,7 +46,7 @@ func (c *Client) Close() error {
 }
 
 // GetMilkingRecords retrieves milking records from the database for the specified duration
-func (c *Client) GetMilkingRecords(start, end time.Time, lastOID int64) ([]models.MilkingRecord, error) {
+func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, lastOID int64) ([]models.MilkingRecord, error) {
 	query := `
 		SELECT 
 			smy.OID,
@@ -65,7 +70,7 @@ func (c *Client) GetMilkingRecords(start, end time.Time, lastOID int64) ([]model
 		ORDER BY smy.OID
 	`
 
-	rows, err := c.db.Query(query, sql.Named("StartTime", start), sql.Named("EndTime", end), sql.Named("LastOID", lastOID))
+	rows, err := c.db.QueryContext(ctx, query, sql.Named("StartTime", start), sql.Named("EndTime", end), sql.Named("LastOID", lastOID))
 	if err != nil {
 		log.Printf("Error querying milking metrics: %v", err)
 		return nil, err
@@ -96,9 +101,8 @@ func (c *Client) GetMilkingRecords(start, end time.Time, lastOID int64) ([]model
 	return records, nil
 }
 
-
 // GetDeviceUtilization retrieves device utilization metrics
-func (c *Client) GetDeviceUtilization() (map[string]int, error) {
+func (c *Client) GetDeviceUtilization(ctx context.Context) (map[string]int, error) {
 	query := `
 		SELECT 
 			CAST(MilkingDevice AS VARCHAR(10)) as device_id,
@@ -109,7 +113,7 @@ func (c *Client) GetDeviceUtilization() (map[string]int, error) {
 		GROUP BY MilkingDevice
 	`
 
-	rows, err := c.db.Query(query)
+	rows, err := c.db.QueryContext(ctx, query)
 	if err != nil {
 		log.Printf("Error querying device utilization: %v", err)
 		return nil, err
@@ -156,4 +160,3 @@ func translateBreedToFrench(englishBreed string) string {
 	}
 	return englishBreed
 }
-
