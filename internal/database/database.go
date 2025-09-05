@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net"
 	"strings"
 	"time"
 
@@ -19,29 +20,71 @@ type Client struct {
 
 // NewClient creates a new database client instance
 func NewClient(host, port, dbname, user, password string) *Client {
-	connString := fmt.Sprintf("server=%s;port=%s;database=%s;user id=%s;password=%s;encrypt=disable",
+	// Add explicit timeout parameters to connection string
+	connString := fmt.Sprintf("server=%s;port=%s;database=%s;user id=%s;password=%s;encrypt=disable;connection timeout=10;dial timeout=10",
 		host, port, dbname, user, password)
+
+	log.Printf("Attempting to connect to database at %s:%s", host, port)
+
+	// Test network connectivity first
+	if !testNetworkConnectivity(host, port) {
+		log.Fatal("Network connectivity test failed")
+	}
 
 	db, err := sql.Open("sqlserver", connString)
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		log.Fatal("Failed to create database connection:", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// Set connection pool timeouts
+	db.SetConnMaxLifetime(time.Minute * 3)
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(10)
 
-	if err := db.PingContext(ctx); err != nil {
-		log.Fatal("Failed to ping database:", err)
+	// Try to ping with multiple retries
+	const maxRetries = 3
+	for i := range maxRetries {
+		log.Printf("Database ping attempt %d/%d", i+1, maxRetries)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		err := db.PingContext(ctx)
+		cancel()
+
+		if err == nil {
+			log.Printf("Database connection successful")
+			return &Client{db: db}
+		}
+
+		log.Printf("Database ping failed (attempt %d/%d): %v", i+1, maxRetries, err)
+
+		if i < maxRetries-1 {
+			time.Sleep(time.Duration(i+1) * 2 * time.Second) // Exponential backoff
+		}
 	}
 
-	return &Client{
-		db: db,
-	}
+	log.Fatal("Failed to connect to database after all retries")
+	return nil
 }
 
 // Close closes the database connection
 func (c *Client) Close() error {
 	return c.db.Close()
+}
+
+// testNetworkConnectivity tests basic TCP connectivity to the database
+func testNetworkConnectivity(host, port string) bool {
+	log.Printf("Testing network connectivity to %s:%s", host, port)
+
+	timeout := 10 * time.Second
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), timeout)
+	if err != nil {
+		log.Printf("Network connectivity test failed: %v", err)
+		return false
+	}
+
+	conn.Close()
+	log.Printf("Network connectivity test successful")
+	return true
 }
 
 // GetMilkingRecords retrieves milking records from the database for the specified duration
