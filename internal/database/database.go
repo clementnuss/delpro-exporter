@@ -20,8 +20,8 @@ type Client struct {
 
 // NewClient creates a new database client instance
 func NewClient(host, port, dbname, user, password string) *Client {
-	// Add explicit timeout parameters to connection string
-	connString := fmt.Sprintf("server=%s;port=%s;database=%s;user id=%s;password=%s;encrypt=disable;connection timeout=10;dial timeout=10",
+	// Add explicit timeout parameters and packet size limit for MTU issues
+	connString := fmt.Sprintf("server=%s;port=%s;database=%s;user id=%s;password=%s;encrypt=disable;connection timeout=10;dial timeout=10;packet size=1024",
 		host, port, dbname, user, password)
 
 	log.Printf("Attempting to connect to database at %s:%s", host, port)
