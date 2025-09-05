@@ -28,11 +28,19 @@ type DelProExporter struct {
 
 // NewDelProExporter creates a new DelPro exporter instance
 func NewDelProExporter(host, port, dbname, user, password string) *DelProExporter {
+	// Determine OID file path - use working directory if available
+	oidFilePath := "delpro_last_oid.txt"
+	if wd, err := os.Getwd(); err == nil {
+		oidFilePath = wd + "/delpro_last_oid.txt"
+	}
+
 	exporter := &DelProExporter{
 		db:      database.NewClient(host, port, dbname, user, password),
 		metrics: delprometrics.NewExporter(),
-		oidFile: "delpro_last_oid.txt",
+		oidFile: oidFilePath,
 	}
+
+	log.Printf("Using OID file path: %s", oidFilePath)
 
 	// Load last processed OID from file
 	exporter.loadLastOID()
