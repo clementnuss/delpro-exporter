@@ -194,6 +194,17 @@ func (e *DelProExporter) saveLastOID() {
 	}
 }
 
+// SetLastOID sets the last processed OID if the new value is larger than current
+func (e *DelProExporter) SetLastOID(newOID int64) {
+	if newOID > e.lastOID {
+		log.Printf("Overriding last processed OID from %d to %d", e.lastOID, newOID)
+		e.lastOID = newOID
+		e.saveLastOID()
+	} else {
+		log.Printf("Specified OID %d is not larger than current OID %d, ignoring", newOID, e.lastOID)
+	}
+}
+
 // WritePrometheus writes current metrics in standard Prometheus format
 func (e *DelProExporter) WritePrometheus(w io.Writer, exposeProcessMetrics bool) {
 	metrics.WritePrometheus(w, exposeProcessMetrics)

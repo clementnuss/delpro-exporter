@@ -9,18 +9,29 @@ import (
 
 	"github.com/clementnuss/delpro-exporter/internal/exporter"
 	_ "github.com/joho/godotenv/autoload"
-)
-
-var (
-	listenAddr = flag.String("web.listen-address", ":9090", "Address to listen on for web interface and telemetry")
-	dbHost     = flag.String("db.host", "localhost", "Database host")
-	dbPort     = flag.String("db.port", "1433", "Database port")
-	dbName     = flag.String("db.name", "DDM", "Database name")
-	dbUser     = flag.String("db.user", "sa", "Database user")
+	"github.com/peterbourgon/ff/v3"
 )
 
 func main() {
-	flag.Parse()
+	// Create a new flag set for ff
+	fs := flag.NewFlagSet("delpro-exporter", flag.ExitOnError)
+
+	// Define flags on the custom flag set
+	listenAddr := fs.String("listen-address", ":9090", "Address to listen on for web interface and telemetry")
+	dbHost := fs.String("db-host", "localhost", "Database host")
+	dbPort := fs.String("db-port", "1433", "Database port")
+	dbName := fs.String("db-name", "DDM", "Database name")
+	dbUser := fs.String("db-user", "sa", "Database user")
+	lastOID := fs.Int64("last-oid", 0, "Override last processed OID (if larger than current value)")
+
+	// Parse configuration with ff (supports flags, environment variables, and config file)
+	err := ff.Parse(fs, os.Args[1:],
+		ff.WithEnvVarPrefix("DELPRO"),
+		ff.WithConfigFileFlag("config"),
+	)
+	if err != nil {
+		log.Fatal("Error parsing configuration:", err)
+	}
 
 	dbPassword := os.Getenv("SQL_PASSWORD")
 	if dbPassword == "" {
@@ -29,6 +40,11 @@ func main() {
 
 	delproExporter := exporter.NewDelProExporter(*dbHost, *dbPort, *dbName, *dbUser, dbPassword)
 	defer delproExporter.Close()
+
+	// Override last OID if specified and larger than current value
+	if *lastOID > 0 {
+		delproExporter.SetLastOID(*lastOID)
+	}
 
 	go func() {
 		for {
