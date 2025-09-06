@@ -5,6 +5,32 @@ import (
 	"time"
 )
 
+// Teat represents a cow teat position using bitfield values
+type Teat int
+
+const (
+	LeftFront  Teat = 1 << iota // 1
+	RightFront                  // 2
+	LeftRear                    // 4
+	RightRear                   // 8
+)
+
+// String returns the string representation of the teat
+func (t Teat) String() string {
+	switch t {
+	case LeftFront:
+		return "left_front"
+	case RightFront:
+		return "right_front"
+	case LeftRear:
+		return "left_rear"
+	case RightRear:
+		return "right_rear"
+	default:
+		return "unknown"
+	}
+}
+
 const (
 	// Metric names
 	MetricMilkYieldTotal    = "delpro_milk_yield_liters_total"
@@ -59,17 +85,12 @@ func (r *MilkingRecord) TeatMetricName(metric, teat string) string {
 // GetAffectedTeats returns a slice of teat names based on bitfield value
 func GetAffectedTeats(bitfield int) []string {
 	var teats []string
-	if bitfield&1 != 0 { // LeftFront
-		teats = append(teats, "left_front")
-	}
-	if bitfield&2 != 0 { // RightFront
-		teats = append(teats, "right_front")
-	}
-	if bitfield&4 != 0 { // LeftRear
-		teats = append(teats, "left_rear")
-	}
-	if bitfield&8 != 0 { // RightRear
-		teats = append(teats, "right_rear")
+	allTeats := []Teat{LeftFront, RightFront, LeftRear, RightRear}
+
+	for _, teat := range allTeats {
+		if bitfield&int(teat) != 0 {
+			teats = append(teats, teat.String())
+		}
 	}
 	return teats
 }
