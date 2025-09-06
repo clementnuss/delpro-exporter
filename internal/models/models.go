@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -19,13 +20,13 @@ const (
 func (t Teat) String() string {
 	switch t {
 	case LeftFront:
-		return "left_front"
+		return "AvG"
 	case RightFront:
-		return "right_front"
+		return "AvD"
 	case LeftRear:
-		return "left_rear"
+		return "ArG"
 	case RightRear:
-		return "right_rear"
+		return "ArD"
 	default:
 		return "unknown"
 	}
@@ -33,19 +34,23 @@ func (t Teat) String() string {
 
 const (
 	// Metric names
-	MetricMilkYieldTotal    = "delpro_milk_yield_liters_total"
-	MetricLastMilkYield     = "delpro_milk_last_yield_liters"
-	MetricMilkSessions      = "delpro_milk_sessions_total"
-	MetricConductivity      = "delpro_milk_conductivity_mScm"
-	MetricSomaticCellCount  = "delpro_milk_somatic_cell_count"
-	MetricMilkingDuration   = "delpro_milking_duration_seconds"
-	MetricDeviceUtilization = "delpro_device_utilization_sessions_per_hour"
-	MetricIncomplete        = "delpro_milking_incomplete_teat"
-	MetricKickoff           = "delpro_milking_kickoff_teat"
+	MetricMilkSessions         = "delpro_milk_sessions_total"
+	MetricMilkYieldTotal       = "delpro_milk_yield_liters_total"
+	MetricLastMilkYield        = "delpro_milk_last_yield_liters"
+	MetricConductivity         = "delpro_milk_conductivity_mScm"
+	MetricSomaticCellTotal     = "delpro_milk_somatic_cell_total"
+	MetricLastSomaticCellTotal = "delpro_milk_last_somatic_cell"
+	MetricMilkingDuration      = "delpro_milking_duration_seconds"
+	MetricLastMilkingDuration  = "delpro_last_milking_duration_seconds"
+	MetricIncomplete           = "delpro_milking_incomplete_teat"
+	MetricKickoff              = "delpro_milking_kickoff_teat"
+	MetricIncompleteTeats      = "delpro_milking_incomplete_teats"
+	MetricKickoffTeats         = "delpro_milking_kickoff_teats"
+	MetricDeviceUtilization    = "delpro_device_utilization_sessions_per_hour"
 
 	// Query parameters
 	DefaultLookbackWindow   = 24 * time.Hour
-	HistoricalLookbackHours = 365 * 24 * time.Hour
+	HistoricalLookbackHours = 30 * 24 * time.Hour
 )
 
 // MilkingRecord represents a single milking session from the database
@@ -77,9 +82,19 @@ func (r *MilkingRecord) TeatLabelStr(teat string) string {
 	return fmt.Sprintf(`%s,teat="%s"`, r.LabelStr(), teat)
 }
 
+// TeatsLabelStr returns formatted Prometheus labels for concatenated teats metrics
+func (r *MilkingRecord) TeatsLabelStr(teats string) string {
+	return fmt.Sprintf(`%s,teats="%s"`, r.LabelStr(), teats)
+}
+
 // TeatMetricName returns a fully qualified teat metric name with labels
 func (r *MilkingRecord) TeatMetricName(metric, teat string) string {
 	return fmt.Sprintf("%s{%s}", metric, r.TeatLabelStr(teat))
+}
+
+// TeatsMetricName returns a fully qualified concatenated teats metric name with labels
+func (r *MilkingRecord) TeatsMetricName(metric, teats string) string {
+	return fmt.Sprintf("%s{%s}", metric, r.TeatsLabelStr(teats))
 }
 
 // GetAffectedTeats returns a slice of teat names based on bitfield value
@@ -93,6 +108,15 @@ func GetAffectedTeats(bitfield int) []string {
 		}
 	}
 	return teats
+}
+
+// GetAffectedTeatsString returns a comma-separated string of affected teat names
+func GetAffectedTeatsString(bitfield int) string {
+	teats := GetAffectedTeats(bitfield)
+	if len(teats) == 0 {
+		return "none"
+	}
+	return strings.Join(teats, ",")
 }
 
 // MetricName returns a fully qualified metric name with labels

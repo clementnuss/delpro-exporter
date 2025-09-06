@@ -89,28 +89,37 @@ func (e *Exporter) CreateMetricsFromRecords(s *metrics.Set, w io.Writer, records
 	}
 
 	for _, r := range records {
-		s.GetOrCreateGauge(r.MetricName(models.MetricLastMilkYield), nil).Set(r.Yield)
 		s.GetOrCreateCounter(r.MetricName(models.MetricMilkSessions)).Inc()
-		
-		// Optional metrics - only create if data exists
-		if r.Conductivity != nil {
-			s.GetOrCreateGauge(r.MetricName(models.MetricConductivity), nil).Set(float64(*r.Conductivity))
-		}
-		if r.Duration != nil {
-			s.GetOrCreateHistogram(r.MetricName(models.MetricMilkingDuration)).Update(float64(*r.Duration))
-		}
+
+		s.GetOrCreateGauge(r.MetricName(models.MetricLastMilkYield), nil).Set(r.Yield)
+		s.GetOrCreateGauge(r.MetricName(models.MetricMilkYieldTotal), nil).Add(r.Yield)
+
+		s.GetOrCreateGauge(r.MetricName(models.MetricConductivity), nil).Set(float64(*r.Conductivity))
+
+		s.GetOrCreateHistogram(r.MetricName(models.MetricMilkingDuration)).Update(float64(*r.Duration))
+		s.GetOrCreateGauge(r.MetricName(models.MetricLastMilkingDuration), nil).Set(float64(*r.Duration))
+
 		if r.SomaticCellCount != nil {
-			s.GetOrCreateGauge(r.MetricName(models.MetricSomaticCellCount), nil).Set(float64(*r.SomaticCellCount))
+			s.GetOrCreateGauge(r.MetricName(models.MetricSomaticCellTotal), nil).Add(float64(*r.SomaticCellCount))
+			s.GetOrCreateGauge(r.MetricName(models.MetricLastSomaticCellTotal), nil).Set(float64(*r.SomaticCellCount))
 		}
-		if r.Incomplete != nil {
-			for _, teat := range models.GetAffectedTeats(*r.Incomplete) {
-				s.GetOrCreateGauge(r.TeatMetricName(models.MetricIncomplete, teat), nil).Set(1)
-			}
+
+		for _, teat := range models.GetAffectedTeats(*r.Incomplete) {
+			s.GetOrCreateGauge(r.TeatMetricName(models.MetricIncomplete, teat), nil).Inc()
 		}
-		if r.Kickoff != nil {
-			for _, teat := range models.GetAffectedTeats(*r.Kickoff) {
-				s.GetOrCreateGauge(r.TeatMetricName(models.MetricKickoff, teat), nil).Set(1)
-			}
+		// Add concatenated teats metric for easier Grafana visualization
+		incompleteTeats := models.GetAffectedTeatsString(*r.Incomplete)
+		if incompleteTeats != "none" {
+			s.GetOrCreateGauge(r.TeatsMetricName(models.MetricIncompleteTeats, incompleteTeats), nil).Inc()
+		}
+
+		for _, teat := range models.GetAffectedTeats(*r.Kickoff) {
+			s.GetOrCreateGauge(r.TeatMetricName(models.MetricKickoff, teat), nil).Inc()
+		}
+		// Add concatenated teats metric for easier Grafana visualization
+		kickoffTeats := models.GetAffectedTeatsString(*r.Kickoff)
+		if kickoffTeats != "none" {
+			s.GetOrCreateGauge(r.TeatsMetricName(models.MetricKickoffTeats, kickoffTeats), nil).Inc()
 		}
 
 		if w != nil {
