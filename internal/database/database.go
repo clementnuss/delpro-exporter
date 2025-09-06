@@ -100,11 +100,15 @@ func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, la
 			smy.TotalYield,
 			smy.AvgConductivity,
 			DATEDIFF(SECOND, smy.BeginTime, smy.EndTime) as duration_seconds,
+			vmy.Occ as somatic_cell_count,
+			vmy.Incomplete as incomplete,
+			vmy.Kickoff as kickoff,
 			smy.BeginTime,
 			smy.EndTime
 		FROM SessionMilkYield smy
 		INNER JOIN BasicAnimal ba ON smy.BasicAnimal = ba.OID
 		LEFT JOIN TextLookupItem tli ON ba.Breed = tli.ItemID AND tli.Collection = 6
+		LEFT JOIN VoluntarySessionMilkYield vmy ON smy.OID = vmy.OID
 		WHERE smy.EndTime >= @StartTime AND smy.EndTime < @EndTime
 		AND smy.OID > @LastOID
 		AND smy.TotalYield IS NOT NULL
@@ -123,7 +127,22 @@ func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, la
 	for rows.Next() {
 		var record models.MilkingRecord
 
-		if err := rows.Scan(&record.OID, &record.AnimalNumber, &record.AnimalName, &record.AnimalRegNo, &record.BreedName, &record.DeviceID, &record.Yield, &record.Conductivity, &record.Duration, &record.BeginTime, &record.EndTime); err != nil {
+		if err := rows.Scan(
+			&record.OID,
+			&record.AnimalNumber,
+			&record.AnimalName,
+			&record.AnimalRegNo,
+			&record.BreedName,
+			&record.DeviceID,
+			&record.Yield,
+			&record.Conductivity,
+			&record.Duration,
+			&record.SomaticCellCount,
+			&record.Incomplete,
+			&record.Kickoff,
+			&record.BeginTime,
+			&record.EndTime,
+		); err != nil {
 			log.Printf("Error scanning row: %v", err)
 			continue
 		}

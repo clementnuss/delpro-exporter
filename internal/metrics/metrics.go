@@ -89,10 +89,29 @@ func (e *Exporter) CreateMetricsFromRecords(s *metrics.Set, w io.Writer, records
 	}
 
 	for _, r := range records {
-		s.GetOrCreateGauge(r.MetricName(models.MetricMilkYield), nil).Set(r.Yield)
+		s.GetOrCreateGauge(r.MetricName(models.MetricLastMilkYield), nil).Set(r.Yield)
 		s.GetOrCreateCounter(r.MetricName(models.MetricMilkSessions)).Inc()
-		s.GetOrCreateGauge(r.MetricName(models.MetricConductivity), nil).Set(float64(*r.Conductivity))
-		s.GetOrCreateHistogram(r.MetricName(models.MetricMilkingDuration)).Update(float64(*r.Duration))
+		
+		// Optional metrics - only create if data exists
+		if r.Conductivity != nil {
+			s.GetOrCreateGauge(r.MetricName(models.MetricConductivity), nil).Set(float64(*r.Conductivity))
+		}
+		if r.Duration != nil {
+			s.GetOrCreateHistogram(r.MetricName(models.MetricMilkingDuration)).Update(float64(*r.Duration))
+		}
+		if r.SomaticCellCount != nil {
+			s.GetOrCreateGauge(r.MetricName(models.MetricSomaticCellCount), nil).Set(float64(*r.SomaticCellCount))
+		}
+		if r.Incomplete != nil {
+			for _, teat := range models.GetAffectedTeats(*r.Incomplete) {
+				s.GetOrCreateGauge(r.TeatMetricName(models.MetricIncomplete, teat), nil).Set(1)
+			}
+		}
+		if r.Kickoff != nil {
+			for _, teat := range models.GetAffectedTeats(*r.Kickoff) {
+				s.GetOrCreateGauge(r.TeatMetricName(models.MetricKickoff, teat), nil).Set(1)
+			}
+		}
 
 		if w != nil {
 			s.WritePrometheus(NewTimestampWriter(w, r.EndTime))
