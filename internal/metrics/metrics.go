@@ -91,17 +91,23 @@ func (e *Exporter) CreateMetricsFromRecords(s *metrics.Set, w io.Writer, records
 	for _, r := range records {
 		s.GetOrCreateCounter(r.MetricName(models.MetricMilkSessions)).Inc()
 
+		// Last milk yield with timestamp
 		s.GetOrCreateGauge(r.MetricName(models.MetricLastMilkYield), nil).Set(r.Yield)
+		s.GetOrCreateGauge(r.MetricName(models.MetricLastYieldTimestamp), nil).Set(float64(r.EndTime.Unix()))
 		s.GetOrCreateGauge(r.MetricName(models.MetricMilkYieldTotal), nil).Add(r.Yield)
 
 		s.GetOrCreateGauge(r.MetricName(models.MetricConductivity), nil).Set(float64(*r.Conductivity))
 
+		// Last milking duration with timestamp
 		s.GetOrCreateHistogram(r.MetricName(models.MetricMilkingDuration)).Update(float64(*r.Duration))
 		s.GetOrCreateGauge(r.MetricName(models.MetricLastMilkingDuration), nil).Set(float64(*r.Duration))
+		s.GetOrCreateGauge(r.MetricName(models.MetricLastDurationTimestamp), nil).Set(float64(r.EndTime.Unix()))
 
 		if r.SomaticCellCount != nil {
 			s.GetOrCreateGauge(r.MetricName(models.MetricSomaticCellTotal), nil).Add(float64(*r.SomaticCellCount))
+			// Last somatic cell count with timestamp
 			s.GetOrCreateGauge(r.MetricName(models.MetricLastSomaticCellTotal), nil).Set(float64(*r.SomaticCellCount))
+			s.GetOrCreateGauge(r.MetricName(models.MetricLastSCCTimestamp), nil).Set(float64(r.EndTime.Unix()))
 		}
 
 		if r.DaysInLactation != nil {

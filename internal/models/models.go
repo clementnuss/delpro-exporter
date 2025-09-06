@@ -34,20 +34,23 @@ func (t Teat) String() string {
 
 const (
 	// Metric names
-	MetricMilkSessions         = "delpro_milk_sessions_total"
-	MetricMilkYieldTotal       = "delpro_milk_yield_liters_total"
-	MetricLastMilkYield        = "delpro_milk_last_yield_liters"
-	MetricConductivity         = "delpro_milk_conductivity_mScm"
-	MetricSomaticCellTotal     = "delpro_milk_somatic_cell_total"
-	MetricLastSomaticCellTotal = "delpro_milk_last_somatic_cell"
-	MetricMilkingDuration      = "delpro_milking_duration_seconds"
-	MetricLastMilkingDuration  = "delpro_last_milking_duration_seconds"
-	MetricIncomplete           = "delpro_milking_incomplete_teat"
-	MetricKickoff              = "delpro_milking_kickoff_teat"
-	MetricIncompleteTeats      = "delpro_milking_incomplete_teats"
-	MetricKickoffTeats         = "delpro_milking_kickoff_teats"
-	MetricDaysInLactation      = "delpro_animal_days_in_lactation"
-	MetricDeviceUtilization    = "delpro_device_utilization_sessions_per_hour"
+	MetricMilkSessions          = "delpro_milk_sessions_total"
+	MetricMilkYieldTotal        = "delpro_milk_yield_liters_total"
+	MetricLastMilkYield         = "delpro_milk_last_yield_liters"
+	MetricLastYieldTimestamp    = "delpro_milk_last_yield_timestamp"
+	MetricConductivity          = "delpro_milk_conductivity_mScm"
+	MetricSomaticCellTotal      = "delpro_milk_somatic_cell_total"
+	MetricLastSomaticCellTotal  = "delpro_milk_last_somatic_cell"
+	MetricLastSCCTimestamp      = "delpro_milk_last_somatic_cell_timestamp"
+	MetricMilkingDuration       = "delpro_milking_duration_seconds"
+	MetricLastMilkingDuration   = "delpro_last_milking_duration_seconds"
+	MetricLastDurationTimestamp = "delpro_last_milking_duration_timestamp"
+	MetricIncomplete            = "delpro_milking_incomplete_teat"
+	MetricKickoff               = "delpro_milking_kickoff_teat"
+	MetricIncompleteTeats       = "delpro_milking_incomplete_teats"
+	MetricKickoffTeats          = "delpro_milking_kickoff_teats"
+	MetricDaysInLactation       = "delpro_animal_days_in_lactation"
+	MetricDeviceUtilization     = "delpro_device_utilization_sessions_per_hour"
 
 	// Query parameters
 	DefaultLookbackWindow   = 24 * time.Hour
