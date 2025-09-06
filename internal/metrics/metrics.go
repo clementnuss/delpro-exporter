@@ -104,6 +104,10 @@ func (e *Exporter) CreateMetricsFromRecords(s *metrics.Set, w io.Writer, records
 			s.GetOrCreateGauge(r.MetricName(models.MetricLastSomaticCellTotal), nil).Set(float64(*r.SomaticCellCount))
 		}
 
+		if r.DaysInLactation != nil {
+			s.GetOrCreateGauge(r.MetricName(models.MetricDaysInLactation), nil).Set(float64(*r.DaysInLactation))
+		}
+
 		for _, teat := range models.GetAffectedTeats(*r.Incomplete) {
 			s.GetOrCreateGauge(r.TeatMetricName(models.MetricIncomplete, teat), nil).Inc()
 		}

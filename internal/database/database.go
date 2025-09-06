@@ -97,6 +97,8 @@ func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, la
 			COALESCE(ba.OfficialRegNo, 'Unknown') as animal_reg_no,
 			COALESCE(tli.ItemValue, CAST(ba.Breed AS VARCHAR(10))) as breed_name,
 			CAST(smy.MilkingDevice AS VARCHAR(10)) as device_id,
+			COALESCE(md.Name, 'Unknown') as destination_name,
+			DATEDIFF(day, als.StartDate, smy.EndTime) as days_in_lactation,
 			smy.TotalYield,
 			smy.AvgConductivity,
 			DATEDIFF(SECOND, smy.BeginTime, smy.EndTime) as duration_seconds,
@@ -109,6 +111,8 @@ func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, la
 		INNER JOIN BasicAnimal ba ON smy.BasicAnimal = ba.OID
 		LEFT JOIN TextLookupItem tli ON ba.Breed = tli.ItemID AND tli.Collection = 6
 		LEFT JOIN VoluntarySessionMilkYield vmy ON smy.OID = vmy.OID
+		LEFT JOIN MilkDestination md ON smy.Destination = md.OID
+		LEFT JOIN AnimalLactationSummary als ON ba.OID = als.Animal
 		WHERE smy.EndTime >= @StartTime AND smy.EndTime < @EndTime
 		AND smy.OID > @LastOID
 		AND smy.TotalYield IS NOT NULL
@@ -134,6 +138,8 @@ func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, la
 			&record.AnimalRegNo,
 			&record.BreedName,
 			&record.DeviceID,
+			&record.DestinationName,
+			&record.DaysInLactation,
 			&record.Yield,
 			&record.Conductivity,
 			&record.Duration,
@@ -151,6 +157,7 @@ func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, la
 		record.AnimalName = cleanLabelValue(record.AnimalName)
 		record.AnimalRegNo = cleanLabelValue(record.AnimalRegNo)
 		record.BreedName = cleanLabelValue(record.BreedName)
+		record.DestinationName = cleanLabelValue(record.DestinationName)
 
 		// Translate breed name to French
 		record.BreedName = translateBreedToFrench(record.BreedName)

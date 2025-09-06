@@ -46,6 +46,7 @@ const (
 	MetricKickoff              = "delpro_milking_kickoff_teat"
 	MetricIncompleteTeats      = "delpro_milking_incomplete_teats"
 	MetricKickoffTeats         = "delpro_milking_kickoff_teats"
+	MetricDaysInLactation      = "delpro_animal_days_in_lactation"
 	MetricDeviceUtilization    = "delpro_device_utilization_sessions_per_hour"
 
 	// Query parameters
@@ -61,6 +62,8 @@ type MilkingRecord struct {
 	AnimalRegNo      string    // Official registration number
 	BreedName        string    // Breed name (translated to French)
 	DeviceID         string    // Milking device identifier
+	DestinationName  string    // Milk destination name (Tank, Drain, etc.)
+	DaysInLactation  *int      // Days since lactation start (optional)
 	Yield            float64   // Milk yield in liters
 	Conductivity     *int      // Milk conductivity [mS/cm] (optional)
 	Duration         *int      // Session duration in seconds (optional)
@@ -73,8 +76,8 @@ type MilkingRecord struct {
 
 // LabelStr returns formatted Prometheus labels for the record
 func (r *MilkingRecord) LabelStr() string {
-	return fmt.Sprintf(`animal_number="%s",animal_name="%s",animal_reg_no="%s",breed="%s",milk_device_id="%s"`,
-		r.AnimalNumber, r.AnimalName, r.AnimalRegNo, r.BreedName, r.DeviceID)
+	return fmt.Sprintf(`animal_number="%s",animal_name="%s",animal_reg_no="%s",breed="%s",milk_device_id="%s",destination="%s"`,
+		r.AnimalNumber, r.AnimalName, r.AnimalRegNo, r.BreedName, r.DeviceID, r.DestinationName)
 }
 
 // TeatLabelStr returns formatted Prometheus labels for teat-specific metrics
