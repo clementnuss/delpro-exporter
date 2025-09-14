@@ -88,7 +88,7 @@ func testNetworkConnectivity(host, port string) bool {
 }
 
 // GetMilkingRecords retrieves milking records from the database for the specified duration
-func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, lastOID int64) ([]models.MilkingRecord, error) {
+func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, lastOID int64) ([]*models.MilkingRecord, error) {
 	query := `
 		SELECT 
 			smy.OID,
@@ -128,9 +128,9 @@ func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, la
 	}
 	defer rows.Close()
 
-	var records []models.MilkingRecord
+	var records []*models.MilkingRecord
 	for rows.Next() {
-		var record models.MilkingRecord
+		record := &models.MilkingRecord{}
 
 		if err := rows.Scan(
 			&record.OID,

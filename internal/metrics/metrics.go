@@ -83,7 +83,7 @@ func NewExporter() *Exporter {
 }
 
 // CreateMetricsFromRecords creates VictoriaMetrics from milking records
-func (e *Exporter) CreateMetricsFromRecords(s *metrics.Set, w io.Writer, records []models.MilkingRecord) {
+func (e *Exporter) CreateMetricsFromRecords(s *metrics.Set, w io.Writer, records []*models.MilkingRecord) {
 	if s == nil {
 		s = metrics.GetDefaultSet()
 	}
@@ -146,7 +146,17 @@ func (e *Exporter) CreateDeviceUtilizationMetrics(utilization map[string]int) {
 }
 
 // WriteHistoricalMetrics writes metrics with timestamps in Prometheus exposition format
-func (e *Exporter) WriteHistoricalMetrics(w io.Writer, records []models.MilkingRecord) {
-	s := metrics.NewSet()
-	e.CreateMetricsFromRecords(s, w, records)
+// Uses one metric set per animal to avoid duplicate data when no changes occur
+func (e *Exporter) WriteHistoricalMetrics(w io.Writer, records []*models.MilkingRecord) {
+	// Group records by animal registration number
+	animalRecords := make(map[string][]*models.MilkingRecord)
+	for _, record := range records {
+		animalRecords[record.AnimalRegNo] = append(animalRecords[record.AnimalRegNo], record)
+	}
+
+	// Process each animal's records separately
+	for _, animalData := range animalRecords {
+		s := metrics.NewSet()
+		e.CreateMetricsFromRecords(s, w, animalData)
+	}
 }
