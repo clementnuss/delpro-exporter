@@ -112,7 +112,7 @@ func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, la
 		LEFT JOIN TextLookupItem tli ON ba.Breed = tli.ItemID AND tli.Collection = 6
 		LEFT JOIN VoluntarySessionMilkYield vmy ON smy.OID = vmy.OID
 		LEFT JOIN MilkDestination md ON smy.Destination = md.OID
-		LEFT JOIN AnimalLactationSummary als ON ba.OID = als.Animal
+		LEFT JOIN AnimalLactationSummary als ON ba.OID = als.Animal AND als.EndDate IS NULL
 		WHERE smy.EndTime >= @StartTime AND smy.EndTime < @EndTime
 		AND smy.OID > @LastOID
 		AND smy.TotalYield IS NOT NULL
