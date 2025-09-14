@@ -66,6 +66,7 @@ type MilkingRecord struct {
 	BreedName        string    // Breed name (translated to French)
 	DeviceID         string    // Milking device identifier
 	DestinationName  string    // Milk destination name (Tank, Drain, etc.)
+	LactationNumber  *int      // Current lactation number (optional)
 	DaysInLactation  *int      // Days since lactation start (optional)
 	Yield            float64   // Milk yield in liters
 	Conductivity     *int      // Milk conductivity [mS/cm] (optional)
@@ -79,8 +80,12 @@ type MilkingRecord struct {
 
 // LabelStr returns formatted Prometheus labels for the record
 func (r *MilkingRecord) LabelStr() string {
-	return fmt.Sprintf(`animal_number="%s",animal_name="%s",animal_reg_no="%s",breed="%s",milk_device_id="%s",destination="%s"`,
-		r.AnimalNumber, r.AnimalName, r.AnimalRegNo, r.BreedName, r.DeviceID, r.DestinationName)
+	lactationNum := "unknown"
+	if r.LactationNumber != nil {
+		lactationNum = fmt.Sprintf("%d", *r.LactationNumber)
+	}
+	return fmt.Sprintf(`animal_number="%s",animal_name="%s",animal_reg_no="%s",breed="%s",milk_device_id="%s",destination="%s",lactation="%s"`,
+		r.AnimalNumber, r.AnimalName, r.AnimalRegNo, r.BreedName, r.DeviceID, r.DestinationName, lactationNum)
 }
 
 // TeatLabelStr returns formatted Prometheus labels for teat-specific metrics
