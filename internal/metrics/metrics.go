@@ -141,7 +141,7 @@ func (e *Exporter) CreateMetricsFromRecords(s *metrics.Set, w io.Writer, records
 // CreateDeviceUtilizationMetrics creates device utilization metrics
 func (e *Exporter) CreateDeviceUtilizationMetrics(utilization map[string]int) {
 	for deviceID, sessionCount := range utilization {
-		metrics.GetOrCreateGauge(fmt.Sprintf(`%s{milk_device_id="%s"}`, models.MetricDeviceUtilization, deviceID), nil).Set(float64(sessionCount))
+		metrics.GetOrCreateGauge(fmt.Sprintf(`%s{milk_device_id="%s",data_format_version="%s"}`, models.MetricDeviceUtilization, deviceID, models.DataFormatVersion), nil).Set(float64(sessionCount))
 	}
 }
 

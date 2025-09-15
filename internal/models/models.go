@@ -33,6 +33,9 @@ func (t Teat) String() string {
 }
 
 const (
+	// Data format version for metric labels
+	DataFormatVersion = "0.3.0"
+
 	// Metric names
 	MetricMilkSessions          = "delpro_milk_sessions_total"
 	MetricMilkYieldTotal        = "delpro_milk_yield_liters_total"
@@ -84,8 +87,8 @@ func (r *MilkingRecord) LabelStr() string {
 	if r.LactationNumber != nil {
 		lactationNum = fmt.Sprintf("%d", *r.LactationNumber)
 	}
-	return fmt.Sprintf(`animal_number="%s",animal_name="%s",animal_reg_no="%s",breed="%s",milk_device_id="%s",destination="%s",lactation="%s"`,
-		r.AnimalNumber, r.AnimalName, r.AnimalRegNo, r.BreedName, r.DeviceID, r.DestinationName, lactationNum)
+	return fmt.Sprintf(`animal_number="%s",animal_name="%s",animal_reg_no="%s",breed="%s",milk_device_id="%s",destination="%s",lactation="%s",data_format_version="%s"`,
+		r.AnimalNumber, r.AnimalName, r.AnimalRegNo, r.BreedName, r.DeviceID, r.DestinationName, lactationNum, DataFormatVersion)
 }
 
 // TeatLabelStr returns formatted Prometheus labels for teat-specific metrics
