@@ -20,14 +20,15 @@ import (
 
 // DelProExporter combines database and metrics operations
 type DelProExporter struct {
-	db      *database.Client
-	metrics *delprometrics.Exporter
-	oidFile string
-	lastOID int64
+	db         *database.Client
+	metrics    *delprometrics.Exporter
+	oidFile    string
+	lastOID    int64
+	dbLocation *time.Location
 }
 
 // NewDelProExporter creates a new DelPro exporter instance
-func NewDelProExporter(host, port, dbname, user, password string) *DelProExporter {
+func NewDelProExporter(host, port, dbname, user, password string, dbLocation *time.Location) *DelProExporter {
 	// Determine OID file path - use working directory if available
 	oidFilePath := "delpro_last_oid.txt"
 	if wd, err := os.Getwd(); err == nil {
@@ -35,9 +36,10 @@ func NewDelProExporter(host, port, dbname, user, password string) *DelProExporte
 	}
 
 	exporter := &DelProExporter{
-		db:      database.NewClient(host, port, dbname, user, password),
-		metrics: delprometrics.NewExporter(),
-		oidFile: oidFilePath,
+		db:         database.NewClient(host, port, dbname, user, password),
+		metrics:    delprometrics.NewExporter(),
+		oidFile:    oidFilePath,
+		dbLocation: dbLocation,
 	}
 
 	log.Printf("Using OID file path: %s", oidFilePath)
@@ -60,10 +62,11 @@ func (e *DelProExporter) UpdateMetrics() {
 	defer cancel()
 
 	// Get records since last processed OID to prevent duplicate counter increments
-	// Add system local offset to now since database stores times in local timezone (UTC+2)
+	// Convert current UTC time to database timezone to get correct offset
 	now := time.Now()
-	_, offset := now.Zone()
-	adjustedNow := now.Add(time.Duration(offset) * time.Second)
+	dbTime := now.In(e.dbLocation)
+	_, dbOffset := dbTime.Zone()
+	adjustedNow := now.Add(time.Duration(dbOffset) * time.Second)
 	records, err := e.db.GetMilkingRecords(ctx, adjustedNow.Add(-models.DefaultLookbackWindow), adjustedNow, e.lastOID)
 	if err != nil {
 		log.Printf("Error collecting milking metrics: %v", err)

@@ -23,6 +23,7 @@ func main() {
 	dbName := fs.String("db-name", "DDM", "Database name")
 	dbUser := fs.String("db-user", "sa", "Database user")
 	lastOID := fs.Int64("last-oid", 0, "Override last processed OID (if larger than current value)")
+	dbTimezone := fs.String("db-timezone", "Europe/Zurich", "Database timezone location for time offset calculations")
 
 	// Parse configuration with ff (supports flags, environment variables, and config file)
 	err := ff.Parse(fs, os.Args[1:],
@@ -38,7 +39,13 @@ func main() {
 		log.Fatal("SQL_PASSWORD environment variable is required")
 	}
 
-	delproExporter := exporter.NewDelProExporter(*dbHost, *dbPort, *dbName, *dbUser, dbPassword)
+	// Parse database timezone
+	dbLocation, err := time.LoadLocation(*dbTimezone)
+	if err != nil {
+		log.Fatal("Invalid database timezone:", err)
+	}
+
+	delproExporter := exporter.NewDelProExporter(*dbHost, *dbPort, *dbName, *dbUser, dbPassword, dbLocation)
 	defer delproExporter.Close()
 
 	// Override last OID if specified and larger than current value
