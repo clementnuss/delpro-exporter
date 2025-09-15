@@ -70,6 +70,16 @@ find_backup_files() {
         error "No weekly DelPro backup zip files found in $backup_dir"
     fi
 
+    # Find the latest daily backup
+    local latest_daily=$(ls "$backup_dir"/FermeRoySA_DailyDelPro10.5_*_V_TAI_DR.bak.zip 2>/dev/null | sort | tail -1)
+    if [ -n "$latest_daily" ]; then
+        log "Found latest daily backup: $(basename "$latest_daily")"
+        echo "$latest_daily" > /tmp/latest_daily_backup.txt
+    else
+        warn "No daily backup files found"
+        touch /tmp/latest_daily_backup.txt
+    fi
+
     # Extract first backup of each month and map to previous month
     log "Selecting first weekly backup of each month for historical data import..."
 
@@ -292,6 +302,105 @@ export_historical_data() {
     return 0
 }
 
+export_historical_data_for_latest() {
+    local backup_identifier="$1"
+    local year_month="$2"
+    local end_date="$3"
+    local output_file="/tmp/historical_data_${backup_identifier}.txt"
+
+    # Calculate start date (first day of the month)
+    local start_date="${year_month}-01"
+
+    log "Exporting historical data for latest backup: $year_month ($start_date to $end_date)..."
+    log "Output file: $output_file"
+
+    # Export historical metrics with date range from month start to backup date
+    local url="http://localhost:$EXPORTER_PORT/historical-metrics?start=${start_date}&end=${end_date}"
+    log "Requesting: $url"
+
+    if ! curl -s "$url" > "$output_file"; then
+        error "Failed to export historical metrics for latest backup"
+    fi
+
+    local line_count=$(wc -l < "$output_file")
+    log "Exported $line_count lines of historical metrics for latest backup ($start_date to $end_date)"
+
+    if [ "$line_count" -eq 0 ]; then
+        warn "No historical data exported for latest backup ($start_date to $end_date)"
+        return 1
+    fi
+
+    return 0
+}
+
+check_highest_oid() {
+    log "Checking X-Highest-OID header from historical-metrics endpoint..."
+
+    local headers_file="/tmp/exporter_headers.txt"
+
+    # Get headers from the historical-metrics endpoint
+    if curl -I -s "http://localhost:$EXPORTER_PORT/historical-metrics" > "$headers_file"; then
+        local highest_oid=$(grep -i "x-highest-oid" "$headers_file" | cut -d' ' -f2 | tr -d '\r\n')
+        if [ -n "$highest_oid" ]; then
+            log "X-Highest-OID: $highest_oid"
+            echo "HIGHEST_OID: $highest_oid" >> /tmp/import_summary.txt
+        else
+            warn "X-Highest-OID header not found in historical-metrics response"
+        fi
+    else
+        warn "Failed to get headers from historical-metrics endpoint"
+    fi
+
+    rm -f "$headers_file"
+}
+
+process_latest_daily_backup() {
+    local latest_daily_file="/tmp/latest_daily_backup.txt"
+
+    if [ ! -s "$latest_daily_file" ]; then
+        log "No latest daily backup to process"
+        return 0
+    fi
+
+    local latest_daily=$(cat "$latest_daily_file")
+    local backup_name=$(basename "$latest_daily" .zip)
+
+    # Extract date from filename for logging
+    local date_part=$(basename "$latest_daily" | sed 's/.*_\([0-9]\{8\}\)T.*/\1/')
+    local formatted_date="${date_part:0:4}-${date_part:4:2}-${date_part:6:2}"
+    local year_month="${formatted_date:0:7}"
+
+    log "Processing latest daily backup: $backup_name"
+    log "Backup date: $formatted_date"
+    log "Target month: $year_month"
+
+    # Restore the latest daily backup
+    restore_database "$latest_daily" "latest"
+
+    # Start exporter
+    start_exporter
+
+    # Export and import data for the current month up to the backup date
+    local backup_identifier="latest_${backup_name}"
+    if export_historical_data_for_latest "$backup_identifier" "$year_month" "$formatted_date"; then
+        local data_file="/tmp/historical_data_${backup_identifier}.txt"
+
+        # Try to import to VictoriaMetrics
+        if ! import_to_victoriametrics "$data_file" "$backup_identifier"; then
+            warn "Keeping data file for manual import: $data_file"
+        else
+            rm -f "$data_file"
+        fi
+    fi
+
+    # Check the highest OID after processing
+    check_highest_oid
+
+    log "Latest daily backup processing completed"
+    echo "LATEST_BACKUP_DATE: $formatted_date" >> /tmp/import_summary.txt
+    echo "LATEST_BACKUP_FILE: $backup_name" >> /tmp/import_summary.txt
+}
+
 import_to_victoriametrics() {
     local data_file="$1"
     local backup_identifier="$2"
@@ -393,10 +502,26 @@ main() {
         sleep 2
     done < /tmp/monthly_backups.txt
 
-    log "All backups processed successfully!"
+    log "All monthly backups processed successfully!"
+
+    # Initialize summary file
+    echo "DELPRO HISTORICAL DATA IMPORT SUMMARY" > /tmp/import_summary.txt
+    echo "=====================================" >> /tmp/import_summary.txt
+    echo "MONTHLY_BACKUPS_PROCESSED: $total" >> /tmp/import_summary.txt
+    echo "" >> /tmp/import_summary.txt
+
+    # Process latest daily backup
+    echo
+    log "Processing latest daily backup to capture current state..."
+    process_latest_daily_backup
+
+    # Show final summary
+    echo
+    log "=== IMPORT SUMMARY ==="
+    cat /tmp/import_summary.txt
 
     # Cleanup temp files
-    rm -f /tmp/weekly_backups.txt /tmp/monthly_backups.txt
+    rm -f /tmp/weekly_backups.txt /tmp/monthly_backups.txt /tmp/latest_daily_backup.txt
 }
 
 # Show usage if help requested
