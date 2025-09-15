@@ -31,7 +31,7 @@ docker run -e 'ACCEPT_EULA=Y' -e "MSSQL_SA_PASSWORD=$SA_PASSWORD" \
 
 # Wait for SQL Server to start
 echo "Waiting for SQL Server to start..."
-sleep 10
+sleep 5
 
 # Create backup directory in container
 echo "Creating backup directory..."
