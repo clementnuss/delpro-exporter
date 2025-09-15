@@ -167,7 +167,6 @@ func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, la
 		records = append(records, record)
 	}
 
-	log.Printf("Collected milking metrics for %d records", len(records))
 	return records, nil
 }
 

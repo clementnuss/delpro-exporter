@@ -139,6 +139,7 @@ func (e *DelProExporter) WriteHistoricalMetrics(r *http.Request, w http.Response
 	}
 
 	e.metrics.WriteHistoricalMetrics(writer, records)
+	log.Printf("Collected historical milking metrics for %d records", len(records))
 }
 
 // parseTimeRange parses start and end time from HTTP request query parameters

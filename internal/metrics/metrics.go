@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"time"
 
@@ -89,6 +90,9 @@ func (e *Exporter) CreateMetricsFromRecords(s *metrics.Set, w io.Writer, records
 	}
 
 	for _, r := range records {
+		if w == nil {
+			log.Printf("new record processed: %v", r)
+		}
 		s.GetOrCreateCounter(r.MetricName(models.MetricMilkSessions)).Inc()
 
 		// Last milk yield with timestamp
@@ -141,7 +145,7 @@ func (e *Exporter) CreateMetricsFromRecords(s *metrics.Set, w io.Writer, records
 // CreateDeviceUtilizationMetrics creates device utilization metrics
 func (e *Exporter) CreateDeviceUtilizationMetrics(utilization map[string]int) {
 	for deviceID, sessionCount := range utilization {
-		metrics.GetOrCreateGauge(fmt.Sprintf(`%s{milk_device_id="%s",data_format_version="%s"}`, models.MetricDeviceUtilization, deviceID, models.DataFormatVersion), nil).Set(float64(sessionCount))
+		metrics.GetOrCreateGauge(fmt.Sprintf("%s{milk_device_id=%q,data_format_version=%q}", models.MetricDeviceUtilization, deviceID, models.DataFormatVersion), nil).Set(float64(sessionCount))
 	}
 }
 

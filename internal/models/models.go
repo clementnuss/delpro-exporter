@@ -87,18 +87,18 @@ func (r *MilkingRecord) LabelStr() string {
 	if r.LactationNumber != nil {
 		lactationNum = fmt.Sprintf("%d", *r.LactationNumber)
 	}
-	return fmt.Sprintf(`animal_number="%s",animal_name="%s",animal_reg_no="%s",breed="%s",milk_device_id="%s",destination="%s",lactation="%s",data_format_version="%s"`,
+	return fmt.Sprintf("animal_number=%q,animal_name=%q,animal_reg_no=%q,breed=%q,milk_device_id=%q,destination=%q,lactation=%q,data_format_version=%q",
 		r.AnimalNumber, r.AnimalName, r.AnimalRegNo, r.BreedName, r.DeviceID, r.DestinationName, lactationNum, DataFormatVersion)
 }
 
 // TeatLabelStr returns formatted Prometheus labels for teat-specific metrics
 func (r *MilkingRecord) TeatLabelStr(teat string) string {
-	return fmt.Sprintf(`%s,teat="%s"`, r.LabelStr(), teat)
+	return fmt.Sprintf("%s,teat=%q", r.LabelStr(), teat)
 }
 
 // TeatsLabelStr returns formatted Prometheus labels for concatenated teats metrics
 func (r *MilkingRecord) TeatsLabelStr(teats string) string {
-	return fmt.Sprintf(`%s,teats="%s"`, r.LabelStr(), teats)
+	return fmt.Sprintf("%s,teats=%q", r.LabelStr(), teats)
 }
 
 // TeatMetricName returns a fully qualified teat metric name with labels
@@ -131,6 +131,17 @@ func GetAffectedTeatsString(bitfield int) string {
 		return "none"
 	}
 	return strings.Join(teats, ",")
+}
+
+// String returns a string representation of the MilkingRecord for logging
+func (r *MilkingRecord) String() string {
+	sccStr := "nil"
+	if r.SomaticCellCount != nil {
+		sccStr = fmt.Sprintf("%d", *r.SomaticCellCount)
+	}
+
+	return fmt.Sprintf("MilkingRecord{OID:%d, Animal:%s(%s,%s), Yield:%.1fL, SCC:%s}",
+		r.OID, r.AnimalNumber, r.AnimalName, r.AnimalRegNo, r.Yield, sccStr)
 }
 
 // MetricName returns a fully qualified metric name with labels
