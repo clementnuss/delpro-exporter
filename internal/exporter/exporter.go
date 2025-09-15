@@ -106,18 +106,45 @@ func (e *DelProExporter) WriteHistoricalMetrics(r *http.Request, w http.Response
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
-	// Parse query parameters for start and end dates
-	startTime, endTime, err := parseTimeRange(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+	query := r.URL.Query()
+	var records []*models.MilkingRecord
 
-	records, err := e.db.GetMilkingRecords(ctx, startTime, endTime, 0)
-	if err != nil {
-		log.Printf("Unable to collect historical milking metrics: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
+	// Check if OID range is specified
+	if query.Has("start_oid") {
+		// Parse OID range parameters
+		startOID, endOID, err := parseOIDRange(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Use time range for context, but OID range for filtering
+		startTime, endTime, err := e.parseTimeRangeWithLocation(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		records, err = e.db.GetMilkingRecordsWithOIDRange(ctx, startTime, endTime, startOID, endOID)
+		if err != nil {
+			log.Printf("Unable to collect historical milking metrics by OID range: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		// Parse query parameters for start and end dates
+		startTime, endTime, err := e.parseTimeRangeWithLocation(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		records, err = e.db.GetMilkingRecords(ctx, startTime, endTime, 0)
+		if err != nil {
+			log.Printf("Unable to collect historical milking metrics: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Find highest OID processed
@@ -148,9 +175,12 @@ func (e *DelProExporter) WriteHistoricalMetrics(r *http.Request, w http.Response
 	log.Printf("Collected historical milking metrics for %d records", len(records))
 }
 
-// parseTimeRange parses start and end time from HTTP request query parameters
-func parseTimeRange(r *http.Request) (time.Time, time.Time, error) {
+// parseTimeRangeWithLocation parses start and end time from HTTP request query parameters using database location
+func (e *DelProExporter) parseTimeRangeWithLocation(r *http.Request) (time.Time, time.Time, error) {
 	now := time.Now()
+	dbTime := now.In(e.dbLocation)
+	_, dbOffset := dbTime.Zone()
+	now = now.Add(time.Duration(dbOffset) * time.Second)
 
 	// Default to historical lookback period if no parameters provided
 	defaultStart := now.Add(-models.HistoricalLookbackHours)
@@ -164,7 +194,8 @@ func parseTimeRange(r *http.Request) (time.Time, time.Time, error) {
 		if parsedStart, err := time.Parse(time.RFC3339, startStr); err == nil {
 			startTime = parsedStart
 		} else if parsedStart, err := time.Parse("2006-01-02", startStr); err == nil {
-			startTime = parsedStart
+			// For date-only format, interpret in database timezone
+			startTime = time.Date(parsedStart.Year(), parsedStart.Month(), parsedStart.Day(), 0, 0, 0, 0, e.dbLocation)
 		} else {
 			return time.Time{}, time.Time{}, errors.New("invalid start time format, use RFC3339 (2006-01-02T15:04:05Z) or date format (2006-01-02)")
 		}
@@ -176,8 +207,8 @@ func parseTimeRange(r *http.Request) (time.Time, time.Time, error) {
 		if parsedEnd, err := time.Parse(time.RFC3339, endStr); err == nil {
 			endTime = parsedEnd
 		} else if parsedEnd, err := time.Parse("2006-01-02", endStr); err == nil {
-			// For date-only format, set to end of day
-			endTime = parsedEnd.Add(24*time.Hour - time.Nanosecond)
+			// For date-only format, set to end of day in database timezone
+			endTime = time.Date(parsedEnd.Year(), parsedEnd.Month(), parsedEnd.Day(), 23, 59, 59, 999999999, e.dbLocation)
 		} else {
 			return time.Time{}, time.Time{}, errors.New("invalid end time format, use RFC3339 (2006-01-02T15:04:05Z) or date format (2006-01-02)")
 		}
@@ -189,6 +220,38 @@ func parseTimeRange(r *http.Request) (time.Time, time.Time, error) {
 	}
 
 	return startTime, endTime, nil
+}
+
+// parseOIDRange parses start and optional end OID from HTTP request query parameters
+func parseOIDRange(r *http.Request) (int64, int64, error) {
+	query := r.URL.Query()
+
+	// Parse start_oid parameter (required)
+	startOID := int64(0)
+	if startOIDStr := query.Get("start_oid"); startOIDStr != "" {
+		if parsedStartOID, err := strconv.ParseInt(startOIDStr, 10, 64); err == nil {
+			startOID = parsedStartOID
+		} else {
+			return 0, 0, errors.New("invalid start_oid format, must be a valid integer")
+		}
+	}
+
+	// Parse end_oid parameter (optional)
+	endOID := int64(0) // 0 means no end limit
+	if endOIDStr := query.Get("end_oid"); endOIDStr != "" {
+		if parsedEndOID, err := strconv.ParseInt(endOIDStr, 10, 64); err == nil {
+			endOID = parsedEndOID
+		} else {
+			return 0, 0, errors.New("invalid end_oid format, must be a valid integer")
+		}
+	}
+
+	// Ensure start is before or equal to end (if end is specified)
+	if endOID > 0 && startOID > endOID {
+		return 0, 0, errors.New("start_oid must be less than or equal to end_oid")
+	}
+
+	return startOID, endOID, nil
 }
 
 // loadLastOID loads the last processed OID from file

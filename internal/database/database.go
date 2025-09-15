@@ -89,6 +89,11 @@ func testNetworkConnectivity(host, port string) bool {
 
 // GetMilkingRecords retrieves milking records from the database for the specified duration
 func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, lastOID int64) ([]*models.MilkingRecord, error) {
+	return c.GetMilkingRecordsWithOIDRange(ctx, start, end, lastOID, 0)
+}
+
+// GetMilkingRecordsWithOIDRange retrieves milking records from the database for the specified duration and OID range
+func (c *Client) GetMilkingRecordsWithOIDRange(ctx context.Context, start, end time.Time, startOID, endOID int64) ([]*models.MilkingRecord, error) {
 	query := `
 		SELECT 
 			smy.OID,
@@ -115,13 +120,22 @@ func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, la
 		LEFT JOIN MilkDestination md ON smy.Destination = md.OID
 		LEFT JOIN AnimalLactationSummary als ON ba.OID = als.Animal AND als.EndDate IS NULL
 		WHERE smy.EndTime >= @StartTime AND smy.EndTime < @EndTime
-		AND smy.OID > @LastOID
+		AND smy.OID > @StartOID
 		AND smy.TotalYield IS NOT NULL
-		AND ba.Number IS NOT NULL
-		ORDER BY smy.OID
-	`
+		AND ba.Number IS NOT NULL`
 
-	rows, err := c.db.QueryContext(ctx, query, sql.Named("StartTime", start), sql.Named("EndTime", end), sql.Named("LastOID", lastOID))
+	// Add optional end OID condition
+	var params []any
+	params = append(params, sql.Named("StartTime", start), sql.Named("EndTime", end), sql.Named("StartOID", startOID))
+
+	if endOID > 0 {
+		query += ` AND smy.OID <= @EndOID`
+		params = append(params, sql.Named("EndOID", endOID))
+	}
+
+	query += ` ORDER BY smy.OID`
+
+	rows, err := c.db.QueryContext(ctx, query, params...)
 	if err != nil {
 		log.Printf("Error querying milking metrics: %v", err)
 		return nil, err
