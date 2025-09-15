@@ -116,21 +116,27 @@ find_backup_files() {
         fi
     done < /tmp/weekly_backups.txt
 
-    # Handle the last backup if needed
+    # Handle the last backup if needed, but exclude current month since daily backup handles it
     if [ ! -z "$prev_month" ]; then
         local last_zip=$(tail -1 /tmp/weekly_backups.txt)
         local date_part=$(basename "$last_zip" | sed 's/.*_\([0-9]\{8\}\)T.*/\1/')
         local year=${date_part:0:4}
         local month=${date_part:4:2}
-        local target_month=$(printf "%02d" $((10#$month - 1)))
-        local target_year=$year
+        local current_month=$(date +%m)
+        local current_year=$(date +%Y)
 
-        if [ "$month" = "01" ]; then
-            target_month="12"
-            target_year=$((year - 1))
+        # Only process if this backup is not from the current month
+        if [ "$month" != "$current_month" ] || [ "$year" != "$current_year" ]; then
+            local target_month=$(printf "%02d" $((10#$month - 1)))
+            local target_year=$year
+
+            if [ "$month" = "01" ]; then
+                target_month="12"
+                target_year=$((year - 1))
+            fi
+
+            echo "$last_zip|$target_year-$target_month" >> /tmp/monthly_backups.txt
         fi
-
-        echo "$last_zip|$target_year-$target_month" >> /tmp/monthly_backups.txt
     fi
 
     local monthly_count=$(wc -l < /tmp/monthly_backups.txt)
@@ -334,16 +340,29 @@ export_historical_data_for_latest() {
 }
 
 check_highest_oid() {
+    local start_date="$1"
+    local end_date="$2"
+
     log "Checking X-Highest-OID header from historical-metrics endpoint..."
 
     local headers_file="/tmp/exporter_headers.txt"
+    local url="http://localhost:$EXPORTER_PORT/historical-metrics"
+
+    # Add date parameters if provided
+    if [ -n "$start_date" ] && [ -n "$end_date" ]; then
+        url="${url}?start=${start_date}&end=${end_date}"
+        log "Using date range: $start_date to $end_date"
+    fi
 
     # Get headers from the historical-metrics endpoint
-    if curl -I -s "http://localhost:$EXPORTER_PORT/historical-metrics" > "$headers_file"; then
+    if curl -I -s "$url" > "$headers_file"; then
         local highest_oid=$(grep -i "x-highest-oid" "$headers_file" | cut -d' ' -f2 | tr -d '\r\n')
         if [ -n "$highest_oid" ]; then
             log "X-Highest-OID: $highest_oid"
             echo "HIGHEST_OID: $highest_oid" >> /tmp/import_summary.txt
+            if [ -n "$start_date" ] && [ -n "$end_date" ]; then
+                echo "DATE_RANGE: $start_date to $end_date" >> /tmp/import_summary.txt
+            fi
         else
             warn "X-Highest-OID header not found in historical-metrics response"
         fi
@@ -370,8 +389,51 @@ process_latest_daily_backup() {
     local formatted_date="${date_part:0:4}-${date_part:4:2}-${date_part:6:2}"
     local year_month="${formatted_date:0:7}"
 
+    # Calculate the day before the backup date
+    local day_before=$(date -d "${formatted_date} -1 day" +%Y-%m-%d 2>/dev/null || \
+                      date -v-1d -j -f "%Y-%m-%d" "${formatted_date}" +%Y-%m-%d 2>/dev/null)
+
+    # Fallback calculation if date commands fail
+    if [ -z "$day_before" ]; then
+        local year=${formatted_date:0:4}
+        local month=${formatted_date:5:2}
+        local day=${formatted_date:8:2}
+        local prev_day=$((10#$day - 1))
+
+        if [ "$prev_day" -eq 0 ]; then
+            # Go to previous month
+            local prev_month=$((10#$month - 1))
+            if [ "$prev_month" -eq 0 ]; then
+                prev_month=12
+                year=$((year - 1))
+            fi
+            prev_month=$(printf "%02d" $prev_month)
+
+            # Get last day of previous month
+            case "$prev_month" in
+                "02")
+                    if [ $((year % 4)) -eq 0 ] && ([ $((year % 100)) -ne 0 ] || [ $((year % 400)) -eq 0 ]); then
+                        prev_day=29
+                    else
+                        prev_day=28
+                    fi
+                    ;;
+                "04"|"06"|"09"|"11")
+                    prev_day=30
+                    ;;
+                *)
+                    prev_day=31
+                    ;;
+            esac
+            day_before="${year}-${prev_month}-$(printf "%02d" $prev_day)"
+        else
+            day_before="${year}-${month}-$(printf "%02d" $prev_day)"
+        fi
+    fi
+
     log "Processing latest daily backup: $backup_name"
     log "Backup date: $formatted_date"
+    log "Import up to: $day_before (day before backup)"
     log "Target month: $year_month"
 
     # Restore the latest daily backup
@@ -380,9 +442,9 @@ process_latest_daily_backup() {
     # Start exporter
     start_exporter
 
-    # Export and import data for the current month up to the backup date
+    # Export and import data for the current month up to the day before the backup date
     local backup_identifier="latest_${backup_name}"
-    if export_historical_data_for_latest "$backup_identifier" "$year_month" "$formatted_date"; then
+    if export_historical_data_for_latest "$backup_identifier" "$year_month" "$day_before"; then
         local data_file="/tmp/historical_data_${backup_identifier}.txt"
 
         # Try to import to VictoriaMetrics
@@ -394,7 +456,8 @@ process_latest_daily_backup() {
     fi
 
     # Check the highest OID after processing
-    check_highest_oid
+    local start_date="${year_month}-01"
+    check_highest_oid "$start_date" "$day_before"
 
     log "Latest daily backup processing completed"
     echo "LATEST_BACKUP_DATE: $formatted_date" >> /tmp/import_summary.txt
@@ -407,7 +470,7 @@ import_to_victoriametrics() {
 
     log "Importing data to VictoriaMetrics at $VICTORIAMETRICS_URL..."
 
-    if ! curl -X POST "$VICTORIAMETRICS_URL/api/v1/import/prometheus" \
+    if ! curl -X POST "$VICTORIAMETRICS_URL/api/v1/import/prometheus?extra_label=retention_period=long-term" \
          --data-binary "@$data_file" \
          -w "HTTP Status: %{http_code}\n"; then
         warn "Failed to import data for $backup_identifier to VictoriaMetrics"
