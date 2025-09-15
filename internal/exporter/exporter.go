@@ -60,8 +60,11 @@ func (e *DelProExporter) UpdateMetrics() {
 	defer cancel()
 
 	// Get records since last processed OID to prevent duplicate counter increments
+	// Add system local offset to now since database stores times in local timezone (UTC+2)
 	now := time.Now()
-	records, err := e.db.GetMilkingRecords(ctx, now.Add(-models.DefaultLookbackWindow), now, e.lastOID)
+	_, offset := now.Zone()
+	adjustedNow := now.Add(time.Duration(offset) * time.Second)
+	records, err := e.db.GetMilkingRecords(ctx, adjustedNow.Add(-models.DefaultLookbackWindow), adjustedNow, e.lastOID)
 	if err != nil {
 		log.Printf("Error collecting milking metrics: %v", err)
 		return
