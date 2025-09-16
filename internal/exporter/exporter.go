@@ -174,7 +174,7 @@ func (e *DelProExporter) WriteHistoricalMetrics(r *http.Request, w http.Response
 		writer = gzWriter
 	}
 
-	e.metrics.WriteHistoricalMetrics(writer, records)
+	e.metrics.WriteHistoricalMetricsWithInit(writer, records)
 	log.Printf("Collected historical milking metrics for %d records", len(records))
 }
 

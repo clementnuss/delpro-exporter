@@ -158,6 +158,74 @@ func (e *Exporter) CreateDeviceUtilizationMetrics(utilization map[string]int) {
 	}
 }
 
+// WriteHistoricalMetricsWithInit writes historical metrics with timestamps, initializing zero values first
+func (e *Exporter) WriteHistoricalMetricsWithInit(w io.Writer, records []*models.MilkingRecord) {
+	// First, write initialization values for unique animals
+	e.writeInitializationValues(w, records)
+
+	// Then write the actual historical metrics
+	e.WriteHistoricalMetrics(w, records)
+}
+
+// writeInitializationValues writes 0 values with timestamps 10min before the first record for each unique animal
+func (e *Exporter) writeInitializationValues(w io.Writer, records []*models.MilkingRecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	// Track unique animals to avoid duplicate initializations
+	seenAnimals := make(map[string]*models.MilkingRecord)
+
+	// Find the latest record for each unique animal
+	for _, record := range records {
+		key := record.LabelStr()
+		if existing, exists := seenAnimals[key]; !exists || record.EndTime.After(existing.EndTime) {
+			seenAnimals[key] = record
+		}
+	}
+
+	// Write initialization values for each unique animal
+	for _, lastRecord := range seenAnimals {
+		// Create timestamp 10 minutes after the last record
+		initTimestamp := lastRecord.EndTime.Add(10 * time.Minute)
+		timestampMs := initTimestamp.UnixMilli()
+
+		// Write zero values for main metrics
+		fmt.Fprintf(w, "%s 0 %d\n", lastRecord.MetricName(models.MetricMilkSessions), timestampMs)
+		fmt.Fprintf(w, "%s 0 %d\n", lastRecord.MetricName(models.MetricMilkYieldTotal), timestampMs)
+		fmt.Fprintf(w, "%s 0 %d\n", lastRecord.MetricName(models.MetricSomaticCellTotal), timestampMs)
+
+		// Write zero histogram for milking duration
+		e.writeZeroHistogram(w, lastRecord.MetricName(models.MetricMilkingDuration), timestampMs)
+	}
+}
+
+// writeZeroHistogram writes a zero histogram with all necessary components
+func (e *Exporter) writeZeroHistogram(w io.Writer, metricName string, timestampMs int64) {
+	// Parse metric name to get base name and labels
+	name, labels := splitMetricName(metricName)
+
+	// Write histogram _sum metric with 0 value
+	fmt.Fprintf(w, "%s_sum%s 0 %d\n", name, labels, timestampMs)
+
+	// Write histogram _count metric with 0 value
+	fmt.Fprintf(w, "%s_count%s 0 %d\n", name, labels, timestampMs)
+}
+
+// splitMetricName splits a metric name with labels into name and labels parts
+func splitMetricName(metricName string) (string, string) {
+	// Find the opening brace
+	braceIndex := strings.Index(metricName, "{")
+	if braceIndex == -1 {
+		// No labels
+		return metricName, ""
+	}
+
+	name := metricName[:braceIndex]
+	labels := metricName[braceIndex:] // Includes the braces
+	return name, labels
+}
+
 // WriteHistoricalMetrics writes metrics with timestamps in Prometheus exposition format
 // Uses one metric set per animal to avoid duplicate data when no changes occur
 func (e *Exporter) WriteHistoricalMetrics(w io.Writer, records []*models.MilkingRecord) {
