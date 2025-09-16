@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"time"
 
 	"github.com/clementnuss/delpro-exporter/internal/exporter"
@@ -13,6 +14,9 @@ import (
 )
 
 func main() {
+	// Print version information
+	printVersionInfo()
+
 	// Create a new flag set for ff
 	fs := flag.NewFlagSet("delpro-exporter", flag.ExitOnError)
 
@@ -82,4 +86,47 @@ func main() {
 
 	log.Printf("Starting DelPro exporter on %s", *listenAddr)
 	log.Fatal(http.ListenAndServe(*listenAddr, nil))
+}
+
+// printVersionInfo prints build information including git commit/tag
+func printVersionInfo() {
+	buildInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		log.Printf("DelPro Exporter - build information not available")
+		return
+	}
+
+	version := "unknown"
+	revision := "unknown"
+	dirty := false
+	buildTime := "unknown"
+
+	// Extract version and VCS information from build settings
+	for _, setting := range buildInfo.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			if len(setting.Value) >= 7 {
+				revision = setting.Value[:7] // Short commit hash
+			} else {
+				revision = setting.Value
+			}
+		case "vcs.modified":
+			dirty = setting.Value == "true"
+		case "vcs.time":
+			buildTime = setting.Value
+		}
+	}
+
+	// Check if there's a version from module info
+	if buildInfo.Main.Version != "" && buildInfo.Main.Version != "(devel)" {
+		version = buildInfo.Main.Version
+	}
+
+	dirtyFlag := ""
+	if dirty {
+		dirtyFlag = " (dirty)"
+	}
+
+	log.Printf("DelPro Exporter - Version: %s, Commit: %s%s, Built: %s",
+		version, revision, dirtyFlag, buildTime)
 }
