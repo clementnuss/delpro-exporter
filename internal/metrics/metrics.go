@@ -83,6 +83,15 @@ func NewExporter() *Exporter {
 	return &Exporter{}
 }
 
+// InitializeCountersToZero initializes all gauge metrics to 0 for a given animal record
+func (e *Exporter) InitializeCountersToZero(r *models.MilkingRecord) {
+	// Initialize main gauge metrics to 0
+	metrics.GetOrCreateCounter(r.MetricName(models.MetricMilkSessions)).Set(0)
+	metrics.GetOrCreateGauge(r.MetricName(models.MetricMilkYieldTotal), nil).Set(0)
+	metrics.GetOrCreateGauge(r.MetricName(models.MetricSomaticCellTotal), nil).Set(0)
+	// metrics.GetOrCreateHistogram(r.MetricName(models.MetricMilkingDuration)) // not useful as histograms are not printed when empty // TODO: implement solution
+}
+
 // CreateMetricsFromRecords creates VictoriaMetrics from milking records
 func (e *Exporter) CreateMetricsFromRecords(s *metrics.Set, w io.Writer, records []*models.MilkingRecord) {
 	if s == nil {

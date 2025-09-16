@@ -47,6 +47,9 @@ func NewDelProExporter(host, port, dbname, user, password string, dbLocation *ti
 	// Load last processed OID from file
 	exporter.loadLastOID()
 
+	// Initialize counters for animals from past 24h to ensure proper increase() calculations
+	exporter.initializeCounters()
+
 	return exporter
 }
 
@@ -281,6 +284,46 @@ func (e *DelProExporter) SetLastOID(newOID int64) {
 	} else {
 		log.Printf("Specified OID %d is not larger than current OID %d, ignoring", newOID, e.lastOID)
 	}
+}
+
+// initializeCounters sets all counters to 0 for animals that have milked in the past 24h
+func (e *DelProExporter) initializeCounters() {
+	log.Printf("Initializing counters for animals from past 24h...")
+
+	// Create context with timeout for database operations
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Get current time with database timezone offset
+	now := time.Now()
+	dbTime := now.In(e.dbLocation)
+	_, dbOffset := dbTime.Zone()
+	adjustedNow := now.Add(time.Duration(dbOffset) * time.Second)
+
+	// Query last 24h of records to get all animals that might need initialization
+	records, err := e.db.GetMilkingRecords(ctx, adjustedNow.Add(-24*time.Hour), adjustedNow, 0)
+	if err != nil {
+		log.Printf("Error getting records for counter initialization: %v", err)
+		return
+	}
+
+	// Create a set to track unique animal combinations to avoid duplicate initializations
+	seenAnimals := make(map[string]bool)
+	initializedCount := 0
+
+	for _, record := range records {
+		// Create a unique key for this animal's metric labels
+		key := record.LabelStr()
+
+		if !seenAnimals[key] {
+			// Initialize all counter metrics to 0 for this animal
+			e.metrics.InitializeCountersToZero(record)
+			seenAnimals[key] = true
+			initializedCount++
+		}
+	}
+
+	log.Printf("Initialized counters for %d unique animals from past 24h", initializedCount)
 }
 
 // WritePrometheus writes current metrics in standard Prometheus format
