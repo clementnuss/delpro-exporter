@@ -70,6 +70,10 @@ func (e *DelProExporter) UpdateMetrics() {
 	dbTime := now.In(e.dbLocation)
 	_, dbOffset := dbTime.Zone()
 	adjustedNow := now.Add(time.Duration(dbOffset) * time.Second)
+
+	// Add 5 minute delay in live mode to ensure voluntary session milk yield data is populated
+	adjustedNow = adjustedNow.Add(-5 * time.Minute)
+
 	records, err := e.db.GetMilkingRecords(ctx, adjustedNow.Add(-models.DefaultLookbackWindow), adjustedNow, e.lastOID)
 	if err != nil {
 		log.Printf("Error collecting milking metrics: %v", err)
