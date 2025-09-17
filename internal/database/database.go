@@ -15,11 +15,12 @@ import (
 
 // Client handles database connections and operations
 type Client struct {
-	db *sql.DB
+	db         *sql.DB
+	dbLocation *time.Location
 }
 
 // NewClient creates a new database client instance
-func NewClient(host, port, dbname, user, password string) *Client {
+func NewClient(host, port, dbname, user, password string, dbLocation *time.Location) *Client {
 	// Add explicit timeout parameters and packet size limit for MTU issues
 	connString := fmt.Sprintf("server=%s;port=%s;database=%s;user id=%s;password=%s;encrypt=disable;connection timeout=10;dial timeout=10",
 		host, port, dbname, user, password)
@@ -52,7 +53,7 @@ func NewClient(host, port, dbname, user, password string) *Client {
 
 		if err == nil {
 			log.Printf("Database connection successful")
-			return &Client{db: db}
+			return &Client{db: db, dbLocation: dbLocation}
 		}
 
 		log.Printf("Database ping failed (attempt %d/%d): %v", i+1, maxRetries, err)
@@ -87,6 +88,22 @@ func testNetworkConnectivity(host, port string) bool {
 	return true
 }
 
+// convertToDBTime converts a UTC time to database timezone for queries
+func (c *Client) convertToDBTime(t time.Time) time.Time {
+	dbTime := t.In(c.dbLocation)
+	_, dbOffset := dbTime.Zone()
+	return t.Add(time.Duration(dbOffset) * time.Second)
+}
+
+// convertFromDBTime converts a database time back to UTC
+func (c *Client) convertFromDBTime(t time.Time) time.Time {
+	// Database times are stored in local timezone but read as UTC
+	// We need to subtract the offset to get correct UTC time
+	dbTime := t.In(c.dbLocation)
+	_, offset := dbTime.Zone()
+	return t.Add(-time.Duration(offset) * time.Second)
+}
+
 // GetMilkingRecords retrieves milking records from the database for the specified duration
 func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, lastOID int64) ([]*models.MilkingRecord, error) {
 	return c.GetMilkingRecordsWithOIDRange(ctx, start, end, lastOID, 0)
@@ -94,6 +111,9 @@ func (c *Client) GetMilkingRecords(ctx context.Context, start, end time.Time, la
 
 // GetMilkingRecordsWithOIDRange retrieves milking records from the database for the specified duration and OID range
 func (c *Client) GetMilkingRecordsWithOIDRange(ctx context.Context, start, end time.Time, startOID, endOID int64) ([]*models.MilkingRecord, error) {
+	// Convert query times to database timezone
+	dbStart := c.convertToDBTime(start)
+	dbEnd := c.convertToDBTime(end)
 	query := `
 		SELECT 
 			smy.OID,
@@ -126,7 +146,7 @@ func (c *Client) GetMilkingRecordsWithOIDRange(ctx context.Context, start, end t
 
 	// Add optional end OID condition
 	var params []any
-	params = append(params, sql.Named("StartTime", start), sql.Named("EndTime", end), sql.Named("StartOID", startOID))
+	params = append(params, sql.Named("StartTime", dbStart), sql.Named("EndTime", dbEnd), sql.Named("StartOID", startOID))
 
 	if endOID > 0 {
 		query += ` AND smy.OID <= @EndOID`
@@ -177,6 +197,10 @@ func (c *Client) GetMilkingRecordsWithOIDRange(ctx context.Context, start, end t
 
 		// Translate breed name to French
 		record.BreedName = translateBreedToFrench(record.BreedName)
+
+		// Convert database timestamps back to UTC
+		record.BeginTime = c.convertFromDBTime(record.BeginTime)
+		record.EndTime = c.convertFromDBTime(record.EndTime)
 
 		records = append(records, record)
 	}

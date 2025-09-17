@@ -36,7 +36,7 @@ func NewDelProExporter(host, port, dbname, user, password string, dbLocation *ti
 	}
 
 	exporter := &DelProExporter{
-		db:         database.NewClient(host, port, dbname, user, password),
+		db:         database.NewClient(host, port, dbname, user, password, dbLocation),
 		metrics:    delprometrics.NewExporter(),
 		oidFile:    oidFilePath,
 		dbLocation: dbLocation,
@@ -65,16 +65,10 @@ func (e *DelProExporter) UpdateMetrics() {
 	defer cancel()
 
 	// Get records since last processed OID to prevent duplicate counter increments
-	// Convert current UTC time to database timezone to get correct offset
-	now := time.Now()
-	dbTime := now.In(e.dbLocation)
-	_, dbOffset := dbTime.Zone()
-	adjustedNow := now.Add(time.Duration(dbOffset) * time.Second)
-
 	// Add 5 minute delay in live mode to ensure voluntary session milk yield data is populated
-	adjustedNow = adjustedNow.Add(-5 * time.Minute)
+	now := time.Now().Add(-5 * time.Minute)
 
-	records, err := e.db.GetMilkingRecords(ctx, adjustedNow.Add(-models.DefaultLookbackWindow), adjustedNow, e.lastOID)
+	records, err := e.db.GetMilkingRecords(ctx, now.Add(-models.DefaultLookbackWindow), now, e.lastOID)
 	if err != nil {
 		log.Printf("Error collecting milking metrics: %v", err)
 		return
@@ -185,9 +179,6 @@ func (e *DelProExporter) WriteHistoricalMetrics(r *http.Request, w http.Response
 // parseTimeRangeWithLocation parses start and end time from HTTP request query parameters using database location
 func (e *DelProExporter) parseTimeRangeWithLocation(r *http.Request) (time.Time, time.Time, error) {
 	now := time.Now()
-	dbTime := now.In(e.dbLocation)
-	_, dbOffset := dbTime.Zone()
-	now = now.Add(time.Duration(dbOffset) * time.Second)
 
 	// Default to historical lookback period if no parameters provided
 	defaultStart := now.Add(-models.HistoricalLookbackHours)
@@ -298,14 +289,9 @@ func (e *DelProExporter) initializeCounters() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Get current time with database timezone offset
-	now := time.Now()
-	dbTime := now.In(e.dbLocation)
-	_, dbOffset := dbTime.Zone()
-	adjustedNow := now.Add(time.Duration(dbOffset) * time.Second)
-
 	// Query last 24h of records to get all animals that might need initialization
-	records, err := e.db.GetMilkingRecords(ctx, adjustedNow.Add(-24*time.Hour), adjustedNow, 0)
+	now := time.Now()
+	records, err := e.db.GetMilkingRecords(ctx, now.Add(-24*time.Hour), now, 0)
 	if err != nil {
 		log.Printf("Error getting records for counter initialization: %v", err)
 		return
