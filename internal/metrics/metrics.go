@@ -176,18 +176,18 @@ func (e *Exporter) writeInitializationValues(w io.Writer, records []*models.Milk
 	// Track unique animals to avoid duplicate initializations
 	seenAnimals := make(map[string]*models.MilkingRecord)
 
-	// Find the latest record for each unique animal
+	// Find the first record for each unique animal
 	for _, record := range records {
 		key := record.LabelStr()
-		if existing, exists := seenAnimals[key]; !exists || record.EndTime.After(existing.EndTime) {
+		if existing, exists := seenAnimals[key]; !exists || record.EndTime.Before(existing.EndTime) {
 			seenAnimals[key] = record
 		}
 	}
 
 	// Write initialization values for each unique animal
 	for _, lastRecord := range seenAnimals {
-		// Create timestamp 10 minutes after the last record
-		initTimestamp := lastRecord.EndTime.Add(10 * time.Minute)
+		// Create timestamp 10 minutes before the first record
+		initTimestamp := lastRecord.EndTime.Add(-10 * time.Minute)
 		timestampMs := initTimestamp.UnixMilli()
 
 		// Write zero values for main metrics
