@@ -53,7 +53,7 @@ const (
 	MetricIncompleteTeats       = "delpro_milking_incomplete_teats"
 	MetricKickoffTeats          = "delpro_milking_kickoff_teats"
 	MetricDaysInLactation       = "delpro_animal_days_in_lactation"
-	MetricDeviceUtilization     = "delpro_device_utilization_sessions_per_hour"
+	MetricDeviceUtilization     = "delpro_device_utilization_sessions_per_day"
 
 	// Query parameters
 	DefaultLookbackWindow   = 24 * time.Hour

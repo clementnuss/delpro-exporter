@@ -25,7 +25,7 @@ Exports the following metrics with comprehensive animal labeling:
 - `delpro_milk_sessions_total` - Total number of milking sessions
 - `delpro_milk_conductivity_avg` - Average milk conductivity
 - `delpro_milking_duration_seconds` - Duration of milking session in seconds
-- `delpro_device_utilization_sessions_per_hour` - Device utilization in sessions per hour
+- `delpro_device_utilization_sessions_per_day` - Device utilization in sessions per day
 
 All metrics include detailed labels:
 - `animal_number` - Farm animal number
