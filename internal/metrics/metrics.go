@@ -158,17 +158,20 @@ func (e *Exporter) CreateDeviceUtilizationMetrics(utilization map[string]int) {
 	}
 }
 
-// WriteHistoricalMetricsWithInit writes historical metrics with timestamps, initializing zero values first
+// WriteHistoricalMetricsWithInit writes historical metrics with timestamps, with counter resets before and after
 func (e *Exporter) WriteHistoricalMetricsWithInit(w io.Writer, records []*models.MilkingRecord) {
-	// First, write initialization values for unique animals
-	e.writeInitializationValues(w, records)
+	// First, write counter reset values before the first records
+	e.writeCounterResetValues(w, records, true) // true = before first record
 
 	// Then write the actual historical metrics
 	e.WriteHistoricalMetrics(w, records)
+
+	// Finally, write counter reset values after the last records
+	e.writeCounterResetValues(w, records, false) // false = after last record
 }
 
-// writeInitializationValues writes 0 values with timestamps 10min before the first record for each unique animal
-func (e *Exporter) writeInitializationValues(w io.Writer, records []*models.MilkingRecord) {
+// writeCounterResetValues writes 0 values with timestamps before first or after last record for each unique animal
+func (e *Exporter) writeCounterResetValues(w io.Writer, records []*models.MilkingRecord, beforeFirst bool) {
 	if len(records) == 0 {
 		return
 	}
@@ -176,27 +179,43 @@ func (e *Exporter) writeInitializationValues(w io.Writer, records []*models.Milk
 	// Track unique animals to avoid duplicate initializations
 	seenAnimals := make(map[string]*models.MilkingRecord)
 
-	// Find the first record for each unique animal
-	for _, record := range records {
-		key := record.LabelStr()
-		if existing, exists := seenAnimals[key]; !exists || record.EndTime.Before(existing.EndTime) {
-			seenAnimals[key] = record
+	if beforeFirst {
+		// Find the first (earliest) record for each unique animal
+		for _, record := range records {
+			key := record.LabelStr()
+			if existing, exists := seenAnimals[key]; !exists || record.EndTime.Before(existing.EndTime) {
+				seenAnimals[key] = record
+			}
+		}
+	} else {
+		// Find the last (latest) record for each unique animal
+		for _, record := range records {
+			key := record.LabelStr()
+			if existing, exists := seenAnimals[key]; !exists || record.EndTime.After(existing.EndTime) {
+				seenAnimals[key] = record
+			}
 		}
 	}
 
-	// Write initialization values for each unique animal
-	for _, lastRecord := range seenAnimals {
-		// Create timestamp 10 minutes before the first record
-		initTimestamp := lastRecord.EndTime.Add(-10 * time.Minute)
-		timestampMs := initTimestamp.UnixMilli()
+	// Write counter reset values for each unique animal
+	for _, targetRecord := range seenAnimals {
+		var resetTimestamp time.Time
+		if beforeFirst {
+			// Create timestamp 10 minutes before the first record
+			resetTimestamp = targetRecord.EndTime.Add(-10 * time.Minute)
+		} else {
+			// Create timestamp 10 minutes after the last record
+			resetTimestamp = targetRecord.EndTime.Add(10 * time.Minute)
+		}
+		timestampMs := resetTimestamp.UnixMilli()
 
-		// Write zero values for main metrics
-		fmt.Fprintf(w, "%s 0 %d\n", lastRecord.MetricName(models.MetricMilkSessions), timestampMs)
-		fmt.Fprintf(w, "%s 0 %d\n", lastRecord.MetricName(models.MetricMilkYieldTotal), timestampMs)
-		fmt.Fprintf(w, "%s 0 %d\n", lastRecord.MetricName(models.MetricSomaticCellTotal), timestampMs)
+		// Write zero values to reset counters
+		fmt.Fprintf(w, "%s 0 %d\n", targetRecord.MetricName(models.MetricMilkSessions), timestampMs)
+		fmt.Fprintf(w, "%s 0 %d\n", targetRecord.MetricName(models.MetricMilkYieldTotal), timestampMs)
+		fmt.Fprintf(w, "%s 0 %d\n", targetRecord.MetricName(models.MetricSomaticCellTotal), timestampMs)
 
 		// Write zero histogram for milking duration
-		e.writeZeroHistogram(w, lastRecord.MetricName(models.MetricMilkingDuration), timestampMs)
+		e.writeZeroHistogram(w, targetRecord.MetricName(models.MetricMilkingDuration), timestampMs)
 	}
 }
 
